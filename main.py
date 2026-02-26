@@ -14,6 +14,9 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN, parse_mode="HTML")
 dp = Dispatcher(bot)
 
+# Словарь для хранения временных данных (кто запрашивает цену)
+pending_custom_orders = {}
+
 # --- МЕНЮ УСЛУГ ---
 MENU = {
     "BASE": {
@@ -22,7 +25,7 @@ MENU = {
             "sleep": ("Сон на заднем", 150, "Я выключу музыку и буду шепотом объявлять ямы. Подушка включена."),
             "fairy": ("Сказка на ночь", 300, "Читаю состав освежителя воздуха томным голосом."),
             "unboxing": ("Распаковка покупок", 500, "Искренне восхищаюсь каждой сосиской из вашего пакета."),
-            "grandma": ("Заботливая бабушка", 800, "Ворчу, что вы без шапки, и спрашиваю, когда вы найдете нормальную работу."),
+            "grandma": ("Заботливая бабушка", 800, "Ворчу, что вы без шапки, и спрашиваю про работу."),
         }
     },
     "CRAZY": {
@@ -38,7 +41,7 @@ MENU = {
         "items": {
             "escort": ("Кортеж из 1 авто", 25000, "Еду строго посередине двух полос с аварийкой."),
             "carpet": ("Красная дорожка", 15000, "Выстилаю перед дверью скатерти. Выход под фанфары."),
-            "interview": ("Интервью", 20000, "Всю дорогу спрашиваю о ваших планах на мировое господство."),
+            "interview": ("Интервью", 20000, "Спрашиваю о ваших планах на мировое господство."),
         }
     },
     "FINAL": {
@@ -65,17 +68,16 @@ def get_category_kb(cat_id):
     kb.add(InlineKeyboardButton("⬅️ НАЗАД", callback_data="main_menu"))
     return kb
 
-def get_payment_kb(item_name):
+def get_payment_kb(item_name, price):
     kb = InlineKeyboardMarkup(row_width=1)
-    # Передаем название услуги в callback для водителя
-    kb.add(InlineKeyboardButton("✅ ОПЛАЧЕНО", callback_data=f"paid_{item_name[:15]}"))
+    kb.add(InlineKeyboardButton("✅ ОПЛАЧЕНО", callback_data=f"paid_{item_name[:15]}_{price}"))
     kb.add(InlineKeyboardButton("❌ ОТМЕНА", callback_data="main_menu"))
     return kb
 
 def get_driver_decision_kb(user_id):
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
-        InlineKeyboardButton("✅ ПОДТВЕРДИТЬ (Деньги пришли)", callback_data=f"dr_ok_{user_id}"),
+        InlineKeyboardButton("✅ ПОДТВЕРДИТЬ", callback_data=f"dr_ok_{user_id}"),
         InlineKeyboardButton("⚠️ ОПЛАТА НЕ ПОЛУЧЕНА", callback_data=f"dr_nopay_{user_id}"),
         InlineKeyboardButton("❌ ОТКЛОНИТЬ ЗАКАЗ", callback_data=f"dr_cancel_{user_id}")
     )
@@ -84,7 +86,7 @@ def get_driver_decision_kb(user_id):
 # --- ОБРАБОТЧИКИ ---
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
-    await message.answer("🚕 <b>Crazy Taxi Bot</b>\nГотовы к самому странному заказу в жизни?", reply_markup=get_main_kb())
+    await message.answer("🚕 <b>Crazy Taxi Bot</b>\nЗакажите шоу, которое невозможно забыть!", reply_markup=get_main_kb())
 
 @dp.callback_query_handler(lambda c: c.data == "main_menu")
 async def back_to_main(callback: types.CallbackQuery):
@@ -107,38 +109,64 @@ async def show_info(callback: types.CallbackQuery):
         f"📌 <b>РЕКВИЗИТЫ:</b> <code>{REQUISITES}</code>\n"
         f"<i>Оплатите и нажмите кнопку ниже.</i>"
     )
-    await callback.message.edit_text(text, reply_markup=get_payment_kb(item_data[0]))
+    await callback.message.edit_text(text, reply_markup=get_payment_kb(item_data[0], item_data[1]))
 
 @dp.callback_query_handler(lambda c: c.data == "custom_order")
 async def custom_order(callback: types.CallbackQuery):
-    await callback.message.edit_text("✍️ <b>Опишите ваше безумие и цену.</b>\nВодитель получит ваше сообщение напрямую.")
+    await callback.message.edit_text("✍️ <b>Опишите ваше пожелание.</b>\nВодитель рассмотрит его и назначит цену.")
 
+# --- ЛОГИКА ИНДИВИДУАЛЬНОГО ЗАКАЗА ---
 @dp.message_handler(lambda m: not m.text.startswith('/'))
-async def handle_custom(message: types.Message):
-    user = message.from_user
-    await bot.send_message(
-        DRIVER_ID,
-        f"🧩 <b>ИНДИВИДУАЛЬНЫЙ ЗАКАЗ!</b>\nОт: {md.quote_html(user.full_name)} (@{user.username})\nТекст: <i>{md.quote_html(message.text)}</i>",
-        reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("✅ ПРЕДЛОЖИТЬ ОПЛАТИТЬ", callback_data=f"ask_{user.id}"))
-    )
-    await message.answer("✅ <b>Ваша идея отправлена водителю!</b> Ждите ответа.")
+async def handle_messages(message: types.Message):
+    user_id = str(message.from_user.id)
+    driver_id_str = str(DRIVER_ID)
 
-@dp.callback_query_handler(lambda c: c.data.startswith("ask_"))
-async def ask_pay(callback: types.CallbackQuery):
-    user_id = callback.data.split("_")[1]
-    await bot.send_message(user_id, f"🎯 <b>Водитель согласен!</b>\nПереводите сумму на <code>{REQUISITES}</code> и жмите кнопку.", reply_markup=get_payment_kb("Свой вариант"))
-    await callback.answer("Запрос отправлен.")
+    # Если пишет водитель (назначает цену)
+    if user_id == driver_id_str:
+        if pending_custom_orders:
+            # Берем последнего клиента, которому нужно назначить цену
+            target_user_id = list(pending_custom_orders.keys())[-1]
+            custom_description = pending_custom_orders.pop(target_user_id)
+            
+            price = message.text.strip()
+            
+            await bot.send_message(
+                target_user_id,
+                f"🎯 <b>Водитель оценил ваш заказ!</b>\n\n"
+                f"🛠 Услуга: <i>{custom_description}</i>\n"
+                f"💰 Цена: <b>{price}</b>\n\n"
+                f"Реквизиты для оплаты: <code>{REQUISITES}</code>",
+                reply_markup=get_payment_kb("Свой вариант", price)
+            )
+            await message.answer(f"✅ Цена {price} отправлена клиенту.")
+        else:
+            await message.answer("Пока нет активных запросов на индивидуальную услугу.")
+    
+    # Если пишет клиент (предлагает услугу)
+    else:
+        pending_custom_orders[user_id] = message.text
+        await bot.send_message(
+            DRIVER_ID,
+            f"🧩 <b>ИНДИВИДУАЛЬНЫЙ ЗАКАЗ!</b>\n"
+            f"От: {md.quote_html(message.from_user.full_name)} (@{message.from_user.username})\n"
+            f"Текст: <i>{md.quote_html(message.text)}</i>\n\n"
+            f"<b>ПРОСТО НАПИШИТЕ ЦЕНУ (числом) в ответ на это сообщение:</b>"
+        )
+        await message.answer("✅ <b>Ваша идея отправлена водителю!</b> Он скоро назначит цену.")
 
-# --- ЛОГИКА ДЛЯ ВОДИТЕЛЯ ---
+# --- ЛОГИКА ОПЛАТЫ И РЕШЕНИЯ ---
 @dp.callback_query_handler(lambda c: c.data.startswith("paid_"))
 async def client_paid(callback: types.CallbackQuery):
-    item_name = callback.data.split("_")[1]
+    data = callback.data.split("_")
+    item_name = data[1]
+    price = data[2]
     user = callback.from_user
-    await callback.message.edit_text("⌛ <b>Уведомление отправлено.</b> Ожидайте подтверждения от водителя.")
+    
+    await callback.message.edit_text("⌛ <b>Запрос отправлен.</b> Ожидайте подтверждения.")
     
     await bot.send_message(
         DRIVER_ID,
-        f"💰 <b>КЛИЕНТ ЖМЕТ 'ОПЛАЧЕНО'!</b>\n👤 {md.quote_html(user.full_name)} (@{user.username})\n🛠 Услуга: {item_name}\n\n<b>Проверьте банк!</b>",
+        f"💰 <b>КЛИЕНТ ОПЛАТИЛ {price}₽!</b>\n👤 {md.quote_html(user.full_name)}\n🛠 Услуга: {item_name}\n\n<b>Проверьте банк!</b>",
         reply_markup=get_driver_decision_kb(user.id)
     )
 
@@ -147,16 +175,17 @@ async def driver_action(callback: types.CallbackQuery):
     _, action, user_id = callback.data.split("_")
     
     if action == "ok":
-        await bot.send_message(user_id, "✅ <b>ОПЛАТА ПОДТВЕРЖДЕНА!</b> Водитель начинает выполнение. Приготовьтесь! 🚀")
-        status = "🟢 ВЫ ПОДТВЕРДИЛИ ЗАКАЗ"
+        await bot.send_message(user_id, "✅ <b>ОПЛАТА ПОДТВЕРЖДЕНА!</b> Начинаем шоу! 🚀")
+        status = "🟢 ВЫ ПОДТВЕРДИЛИ"
     elif action == "nopay":
-        await bot.send_message(user_id, "⚠️ <b>ОШИБКА ОПЛАТЫ!</b> Водитель не видит денег на счету. Проверьте перевод или свяжитесь с водителем.")
-        status = "🟡 ВЫ СООБЩИЛИ, ЧТО ОПЛАТЫ НЕТ"
+        await bot.send_message(user_id, "⚠️ <b>ОПЛАТА НЕ ПОЛУЧЕНА!</b> Водитель не видит денег. Проверьте перевод.")
+        status = "🟡 ВЫ ОТВЕТИЛИ, ЧТО ДЕНЕГ НЕТ"
     else:
-        await bot.send_message(user_id, "❌ <b>ОТКАЗ.</b> Водитель отменил заказ. Если вы перевели деньги, они будут возвращены (свяжитесь с водителем).")
+        await bot.send_message(user_id, "❌ <b>ОТКЛОНЕНО.</b> Водитель отменил заказ.")
         status = "🔴 ВЫ ОТМЕНИЛИ ЗАКАЗ"
     
     await callback.message.edit_text(f"{callback.message.text}\n\n{status}")
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
+    
