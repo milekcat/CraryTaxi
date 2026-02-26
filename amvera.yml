@@ -1,8 +1,13 @@
 meta:
-  name: crazy-taxi-bot
   environment: python
   toolchain:
     name: pip
-    version: 3.9
+    version: "3.11"
+build:
+  requirementsPath: requirements.txt
+  useCache: true
 run:
-  command: python3 main.py
+  scriptName: main.py
+  command: null
+  persistenceMount: /data
+  containerPort: "80"
