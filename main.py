@@ -3,8 +3,8 @@ import logging
 from aiogram import Bot, Dispatcher, types, executor
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
 
-# --- КОНФИГУРАЦИЯ (Берем из переменных Amvera) ---
-# В панели Amvera названия должны быть СТРОГО такими же
+# --- КОНФИГУРАЦИЯ ---
+# Бот ищет эти имена в разделе "Переменные" на Amvera
 API_TOKEN = os.getenv('API_TOKEN')
 PAYMENT_TOKEN = os.getenv('PAYMENT_TOKEN')
 DRIVER_ID = os.getenv('DRIVER_ID')
@@ -12,10 +12,9 @@ LAWYER_URL = "https://t.me/Ai_advokatrobot"
 
 logging.basicConfig(level=logging.INFO)
 
-# Проверка на наличие токена перед запуском
+# Проверка наличия токена, чтобы бот не падал без ошибки
 if not API_TOKEN:
-    logging.error("ОШИБКА: Переменная API_TOKEN не найдена в настройках Amvera!")
-    exit(1)
+    logging.error("API_TOKEN не найден! Проверьте переменные в Amvera.")
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
@@ -34,7 +33,7 @@ MENU = {
     "CRAZY": {
         "title": "🔞 ДРАЙВЕР-ХАРДКОР",
         "items": {
-            "naked": ("Полностью голый водитель", 15000, "Абсолютная свобода"),
+            "naked": ("Полностью голый водитель", 15000, "Свобода"),
             "dance": ("Танцы на светофоре", 15000, "Шоу на красный"),
             "tarzan": ("Водитель-Тарзан", 50000, "Голый + крик в окно"),
         }
@@ -42,7 +41,7 @@ MENU = {
     "VIP": {
         "title": "💎 VIP УСЛУГИ",
         "items": {
-            "escort": ("Кортеж из 1 авто", 25000, "Едем по центру двух полос"),
+            "escort": ("Кортеж из 1 авто", 25000, "По центру двух полос"),
             "carpet": ("Красная дорожка", 15000, "Скатерти у двери"),
             "interview": ("Интервью", 20000, "Весь путь с микрофоном"),
         }
@@ -51,7 +50,7 @@ MENU = {
         "title": "🔥 ТОТАЛЬНОЕ БЕЗУМИЕ",
         "items": {
             "burn": ("СЖЕЧЬ МАШИНУ", 1000000, "Уходим красиво"),
-            "ditch": ("Съехать в кювет", 150000, "Для эффектных сторис"),
+            "ditch": ("Съехать в кювет", 150000, "Для сторис"),
         }
     }
 }
@@ -78,10 +77,18 @@ def get_category_kb(cat_id):
     kb.add(InlineKeyboardButton("⬅️ НАЗАД", callback_data="main_menu"))
     return kb
 
+def get_decision_kb(user_id, item_id):
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton("✅ ПРИНЯТЬ", callback_data=f"decide_ok_{user_id}_{item_id}"),
+        InlineKeyboardButton("❌ ОТКАЗАТЬ", callback_data=f"decide_no_{user_id}_{item_id}")
+    )
+    return kb
+
 # --- ОБРАБОТЧИКИ ---
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
-    text = "⚠️ **ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ**\n\nВы согласны на арт-перформанс?"
+    text = "⚠️ **ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ**\n\nВы согласны на безумный арт-перформанс?"
     await message.answer(text, reply_markup=get_policy_kb(), parse_mode="Markdown")
 
 @dp.callback_query_handler(lambda c: c.data == "accept_policy")
@@ -100,7 +107,11 @@ async def show_cat(callback: types.CallbackQuery):
 @dp.callback_query_handler(lambda c: c.data.startswith("buy_"))
 async def handle_buy(callback: types.CallbackQuery):
     item_id = callback.data.split("_")[1]
-    item_data = next((cat["items"][item_id] for cat in MENU.values() if item_id in cat["items"]), None)
+    item_data = None
+    for cat in MENU.values():
+        if item_id in cat["items"]:
+            item_data = cat["items"][item_id]
+            break
     
     if PAYMENT_TOKEN:
         await bot.send_invoice(
@@ -113,7 +124,30 @@ async def handle_buy(callback: types.CallbackQuery):
             payload=f"{callback.from_user.id}_{item_id}"
         )
     else:
-        await callback.answer("Оплата временно недоступна (не настроен PAYMENT_TOKEN)", show_alert=True)
+        await callback.answer("Оплата недоступна (нет токена)", show_alert=True)
+
+@dp.pre_checkout_query_handler(lambda q: True)
+async def checkout_confirm(pre_checkout_query: types.PreCheckoutQuery):
+    await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+
+@dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT)
+async def payment_done(message: types.Message):
+    user_id, item_id = message.successful_payment.invoice_payload.split("_")
+    await message.answer("⌛ Ждем подтверждения от водителя...")
+    await bot.send_message(
+        DRIVER_ID, 
+        f"💰 **ЗАКАЗ!**\nУслуга: {item_id}\nКлиент: @{message.from_user.username}",
+        reply_markup=get_decision_kb(user_id, item_id)
+    )
+
+@dp.callback_query_handler(lambda c: c.data.startswith("decide_"))
+async def driver_action(callback: types.CallbackQuery):
+    _, action, user_id, item_id = callback.data.split("_")
+    if action == "ok":
+        await bot.send_message(user_id, "✅ **ВОДИТЕЛЬ ПРИНЯЛ!**")
+    else:
+        await bot.send_message(user_id, "❌ **ОТКАЗАНО.** Деньги вернутся.")
+    await callback.message.edit_text(f"Решение принято: {action}")
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
