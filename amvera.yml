@@ -1,0 +1,8 @@
+meta:
+  name: crazy-taxi-bot
+  environment: python
+  toolchain:
+    name: pip
+    version: 3.9
+run:
+  command: python3 main.py
