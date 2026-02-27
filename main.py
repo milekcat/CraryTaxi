@@ -4,33 +4,32 @@ import os
 import sqlite3
 import re
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.client.default import DefaultBotProperties
 
 # ==========================================
-# ⚙️ НАСТРОЙКИ СИСТЕМЫ
+# ⚙️ НАСТРОЙКИ
 # ==========================================
 logging.basicConfig(level=logging.INFO)
 
 API_TOKEN = os.getenv("API_TOKEN")
 OWNER_ID = os.getenv("DRIVER_ID") 
-
-# 🔥 СЕКРЕТНЫЙ КЛЮЧ ДЛЯ МГНОВЕННОГО НАЙМА
-# Если человек напишет: /vip CRAZY_START - он станет водителем сразу.
-MASTER_INVITE_KEY = "CRAZY_START"
+MASTER_INVITE_KEY = "CRAZY_START" # <--- ПАРОЛЬ ДЛЯ МГНОВЕННОГО НАЙМА
 
 if not API_TOKEN or not OWNER_ID:
-    logging.error("⛔ КРИТИЧЕСКАЯ ОШИБКА: Не заполнены переменные API_TOKEN или DRIVER_ID")
+    logging.error("⛔ КРИТИЧЕСКАЯ ОШИБКА: Токены не найдены!")
     exit()
 
 OWNER_ID = int(OWNER_ID)
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
-dp = Dispatcher()
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
 
-# Оперативная память
+# Глобальные переменные
 active_orders = {} 
 client_driver_link = {} 
 
@@ -43,7 +42,6 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # Таблица водителей
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS drivers (
             user_id INTEGER PRIMARY KEY,
@@ -66,7 +64,7 @@ def init_db():
         )
     """)
     
-    # Авто-создание ВЛАДЕЛЬЦА (БОССА)
+    # Авто-регистрация ВЛАДЕЛЬЦА
     cursor.execute("SELECT 1 FROM drivers WHERE user_id = ?", (OWNER_ID,))
     if not cursor.fetchone():
         cursor.execute(
@@ -74,7 +72,6 @@ def init_db():
             (OWNER_ID, "BOSS_NETWORK", "⚫ ЧЕРНАЯ ВОЛГА (БОСС)", "Яндекс Банк +79012723729", "BOSS")
         )
     else:
-        # Принудительно выдаем права владельцу при перезапуске
         cursor.execute("UPDATE drivers SET role='owner', status='active' WHERE user_id=?", (OWNER_ID,))
         
     conn.commit()
@@ -83,7 +80,7 @@ def init_db():
 init_db()
 
 # ==========================================
-# 🛠 УТИЛИТЫ
+# 🛠 ФУНКЦИИ
 # ==========================================
 
 def get_all_admins():
@@ -112,6 +109,7 @@ def get_driver_by_code(code):
 
 def get_driver_info(user_id):
     conn = sqlite3.connect(DB_PATH)
+    # 0:username, 1:car, 2:payment, 3:balance, 4:status, 5:code, 6:role
     res = conn.execute("SELECT username, car_info, payment_info, balance, status, access_code, role FROM drivers WHERE user_id=?", (user_id,)).fetchone()
     conn.close()
     return res
@@ -159,7 +157,7 @@ async def notify_admins(text, markup=None):
 CRAZY_SERVICES = {
     # LEVEL 1
     "candy": {"cat": 1, "price": 0, "name": "🍬 Конфетка", "desc": "Водитель с серьезным лицом вручает вам конфету."},
-    "nose": {"cat": 1, "price": 300, "name": "👃 Палец в носу", "desc": "Водитель едет с пальцем в носу. Вы платите за его моральный ущерб."},
+    "nose": {"cat": 1, "price": 300, "name": "👃 Палец в носу", "desc": "Водитель едет с пальцем в носу. Вы платите за моральный ущерб."},
     "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Открывает дверь, кланяется, называет 'Сир'."},
     "joke": {"cat": 1, "price": 50, "name": "🤡 Тупой анекдот", "desc": "Анекдот категории Б. Смеяться желательно."},
     "silence": {"cat": 1, "price": 150, "name": "🤐 Тишина", "desc": "Музыка выкл, водитель молчит. Режим 'Монах'."},
@@ -189,7 +187,7 @@ CATEGORIES = {
     2: "🟡 МЕДИУМ (Ролевые)",
     3: "🔴 ХАРД (Треш)",
     4: "☠️ VIP БЕЗУМИЕ",
-    5: "🌹 ДЛЯ ДАМ (Спецраздел)"
+    5: "🌹 ДЛЯ ДАМ (Бесплатно/Риск)"
 }
 
 # ==========================================
@@ -228,7 +226,7 @@ class AdminEditDriver(StatesGroup):
     waiting_for_new_value = State()
 
 # ==========================================
-# ⌨️ ГЛАВНОЕ МЕНЮ
+# ⌨️ UI
 # ==========================================
 main_kb = ReplyKeyboardMarkup(
     keyboard=[
@@ -283,6 +281,10 @@ async def check_tos(message: types.Message) -> bool:
 async def lawyer_menu(message: types.Message):
     await message.answer(
         "⚖️ <b>ЮРИДИЧЕСКИЙ ОТДЕЛ</b>\n\n"
+        "Хочешь пожаловаться? Наш адвокат:\n"
+        "• Знает законы Хаммурапи наизусть.\n"
+        "• Докажет, что твой крик — это песня радости.\n"
+        "• Берет оплату борзыми щенками.\n\n"
         "<i>Жми кнопку, если не боишься встречного иска.</i>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🚨 ПОЖАЛОВАТЬСЯ", callback_data="call_lawyer")]])
     )
@@ -310,6 +312,7 @@ async def update_admins_monitor(client_id, taking_driver_id):
         except: pass
 
 async def broadcast_order_to_drivers(client_id, order_text, driver_kb, admin_kb):
+    # 1. Админам
     admins = get_all_admins()
     admin_msg_map = {}
     admin_text = f"🚨 <b>МОНИТОРИНГ (ВСЕ АДМИНЫ)</b>\n\n{order_text}"
@@ -324,6 +327,7 @@ async def broadcast_order_to_drivers(client_id, order_text, driver_kb, admin_kb)
         active_orders[client_id]['admin_msg_ids'] = admin_msg_map
         active_orders[client_id]['broadcasting_text'] = order_text
 
+    # 2. Водителям
     search_msg = await bot.send_message(client_id, "📡 <i>Ищем водителей...</i>")
     await asyncio.sleep(1.5)
     
@@ -381,6 +385,7 @@ async def sel_srv(c: types.CallbackQuery):
     
     pr_text = "БЕСПЛАТНО" if srv['price'] == 0 else f"{srv['price']}₽"
     text = f"🎭 <b>{srv['name']}</b>\n💰 <b>{pr_text}</b>\n\n📝 <i>{srv['desc']}</i>"
+    
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ ЗАКАЗАТЬ", callback_data=f"do_order_{key}")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data=f"cat_{srv['cat']}")]
@@ -440,6 +445,7 @@ async def drv_fin(c: types.CallbackQuery):
 # ==========================================
 # 🚕 ТАКСИ + ТОРГ
 # ==========================================
+# ✅ ИСПРАВЛЕНА ОШИБКА: Добавлено state: FSMContext
 @dp.message(F.text == "🚕 Заказать такси (Поиск)")
 async def taxi_start(message: types.Message, state: FSMContext):
     await message.answer("📍 <b>Откуда?</b>", reply_markup=types.ReplyKeyboardRemove())
@@ -642,7 +648,7 @@ async def cab_pay(c: types.CallbackQuery):
     await c.message.answer(f"💸 Долг: <b>{info[3]}₽</b>\nПереведи Боссу: <b>{boss[2]}</b>")
     await c.answer()
 
-# ✅ ИСПРАВЛЕНИЕ: Теперь бот принимает и /driver, и /drive
+# ✅ РЕГИСТРАЦИЯ
 @dp.message(Command("driver", "drive"))
 async def reg_start(m: types.Message, s: FSMContext):
     info = get_driver_info(m.from_user.id)
