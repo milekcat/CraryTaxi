@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from aiogram.client.default import DefaultBotProperties
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -20,7 +21,7 @@ if not API_TOKEN or not DRIVER_ID:
 DRIVER_ID = int(DRIVER_ID)
 
 # Инициализация бота
-bot = Bot(token=API_TOKEN, parse_mode="HTML")
+bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 # Временное хранилище для заказов (чтобы бот помнил кто, куда и за сколько едет)
