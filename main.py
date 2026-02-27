@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import sqlite3
-import re
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -34,7 +33,6 @@ bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
-# Глобальные переменные
 active_orders = {} 
 client_driver_link = {} 
 
@@ -47,7 +45,6 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # Таблица водителей
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS drivers (
             user_id INTEGER PRIMARY KEY,
@@ -124,7 +121,7 @@ def get_driver_by_code(code):
 
 def get_driver_info(user_id):
     conn = sqlite3.connect(DB_PATH)
-    # Возвращает 11 полей (индекс 0-10)
+    # 0:username, 1:car, 2:payment, 3:balance, 4:status, 5:code, 6:role, 7:fio, 8:r_sum, 9:r_count, 10:commission
     res = conn.execute("SELECT username, car_info, payment_info, balance, status, access_code, role, fio, rating_sum, rating_count, commission FROM drivers WHERE user_id=?", (user_id,)).fetchone()
     conn.close()
     return res
@@ -136,6 +133,7 @@ def update_driver_field(user_id, field, value):
     conn.close()
 
 def extract_price(text):
+    import re
     nums = re.findall(r'\d+', str(text))
     return int("".join(nums)) if nums else 0
 
@@ -183,24 +181,24 @@ async def notify_admins(text, markup=None):
 CRAZY_SERVICES = {
     "candy": {"cat": 1, "price": 0, "name": "🍬 Конфетка", "desc": "Водитель с максимально серьезным лицом вручает вам элитную барбариску. Это знак глубочайшего уважения."},
     "nose": {"cat": 1, "price": 300, "name": "👃 Палец в носу", "desc": "Всю поездку водитель едет с пальцем в носу. Вы платите за его моральные страдания и потерю авторитета."},
-    "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Водитель выходит, картинно открывает вам дверь, кланяется в пояс и называет вас 'Сир' или 'Миледи'."},
+    "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Водитель выходит, открывает вам дверь, кланяется и называет 'Сир' или 'Миледи'."},
     "joke": {"cat": 1, "price": 50, "name": "🤡 Тупой анекдот", "desc": "Анекдот категории 'Б' из золотой коллекции таксиста 90-х. Смеяться не обязательно, но желательно."},
     "silence": {"cat": 1, "price": 150, "name": "🤐 Полная тишина", "desc": "Режим 'Ниндзя'. Музыка выключается, водитель молчит как рыба. Даже если вы спросите дорогу — он ответит языком жестов."},
-    "granny": {"cat": 2, "price": 800, "name": "👵 Бабушка-ворчунья", "desc": "Ролевая игра. Всю дорогу буду бубнить: 'Куда прешь, наркоман?', 'Шапку надень!', 'Вот в наше время такси стоило копейку!'."},
-    "gopnik": {"cat": 2, "price": 500, "name": "🍺 Четкий пацанчик", "desc": "Едем под пацанский рэп, водитель сидит на корточках (шутка, за рулем), называет вас 'Братишка', лузгает семечки и решает вопросики по телефону."},
-    "guide": {"cat": 2, "price": 600, "name": "🗣 Ужасный гид", "desc": "Водитель проводит экскурсию, на ходу выдумывая факты. 'Вот этот ларек построил Иван Грозный лично'. Чем бредовее факты, тем лучше."},
-    "psych": {"cat": 2, "price": 1000, "name": "🧠 Психолог", "desc": "Вы жалуетесь на жизнь, бывших и начальника. Водитель кивает, говорит 'Угу', вздыхает и дает житейские советы уровня Ошо."},
-    "spy": {"cat": 3, "price": 2000, "name": "🕵️‍♂️ Шпион 007", "desc": "Черные очки, паранойя. Водитель постоянно проверяет 'хвост', говорит по рации кодами ('Орел в гнезде') и прячет лицо."},
-    "karaoke": {"cat": 3, "price": 5000, "name": "🎤 Адское Караоке", "desc": "Врубаем 'Рюмку водки' или 'Знаешь ли ты' на полную! Водитель орет песни вместе с вами. Фальшиво, громко, но очень душевно."},
-    "dance": {"cat": 3, "price": 15000, "name": "💃 Танцы на капоте", "desc": "На красном свете водитель выбегает из машины и танцует макарену или лезгинку перед капотом. Прохожие снимают, вам стыдно, всем весело!"},
-    "kidnap": {"cat": 4, "price": 30000, "name": "🎭 Дружеское похищение", "desc": "Вас (понарошку, но реалистично) грузят в багажник (или на заднее), надевают мешок на голову и везут в лес... пить элитный чай с баранками."},
+    "granny": {"cat": 2, "price": 800, "name": "👵 Бабушка-ворчунья", "desc": "Ролевая игра. Всю дорогу водитель будет бубнить: 'Куда прешь, наркоман?', 'Шапку надень!', 'Вот в наше время...'."},
+    "gopnik": {"cat": 2, "price": 500, "name": "🍺 Четкий пацанчик", "desc": "Едем под пацанский рэп, водитель сидит на корточках (шутка), называет вас 'Братишка', лузгает семечки."},
+    "guide": {"cat": 2, "price": 600, "name": "🗣 Ужасный гид", "desc": "Водитель проводит экскурсию, выдумывая факты на ходу. 'Вот этот ларек построил Иван Грозный лично'."},
+    "psych": {"cat": 2, "price": 1000, "name": "🧠 Психолог", "desc": "Вы жалуетесь на жизнь, бывших и начальника. Водитель кивает, говорит 'Угу', вздыхает и дает житейские советы."},
+    "spy": {"cat": 3, "price": 2000, "name": "🕵️‍♂️ Шпион 007", "desc": "Черные очки, паранойя. Водитель проверяет 'хвост', говорит по рации кодами ('Орел в гнезде')."},
+    "karaoke": {"cat": 3, "price": 5000, "name": "🎤 Адское Караоке", "desc": "Врубаем 'Рюмку водки' или 'Знаешь ли ты' на полную! Водитель орет песни вместе с вами. Фальшиво, но душевно."},
+    "dance": {"cat": 3, "price": 15000, "name": "💃 Танцы на капоте", "desc": "На красном свете водитель выбегает из машины и танцует макарену перед капотом. Прохожие снимают, вам стыдно."},
+    "kidnap": {"cat": 4, "price": 30000, "name": "🎭 Дружеское похищение", "desc": "Вас (понарошку) грузят в багажник, надевают мешок на голову и везут в лес... пить элитный чай с баранками."},
     "tarzan": {"cat": 4, "price": 50000, "name": "🦍 Тарзан-Шоу", "desc": "Водитель бьет себя в грудь, издает гортанные звуки, рычит на прохожих и называет другие машины 'железными буйволами'."},
-    "burn": {"cat": 4, "price": 1000000, "name": "🔥 Сжечь машину", "desc": "Едем на пустырь. Вы платите миллион, я даю канистру. Гори оно всё синим пламенем. (Машина реальная, шоу реальное)."},
-    "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Водитель сделает изысканный, поэтичный комплимент вашим глазам. Возможно, сравнит их с звездами или фарами ксенона."},
+    "burn": {"cat": 4, "price": 1000000, "name": "🔥 Сжечь машину", "desc": "Едем на пустырь. Вы платите миллион, я даю канистру. Гори оно всё синим пламенем. (Машина реальная)."},
+    "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Водитель сделает изысканный комплимент вашим глазам. Сравнит их с звездами или ксеноном."},
     "smile": {"cat": 5, "price": 0, "name": "😁 Улыбка", "desc": "Водитель скажет, что ваша улыбка освещает этот старый, пыльный салон лучше, чем аварийка в ночи."},
     "style": {"cat": 5, "price": 0, "name": "👠 Икона стиля", "desc": "Восхищение вашим образом. Водитель поинтересуется, не едете ли вы случайно с показа мод в Париже."},
-    "improv": {"cat": 5, "price": 0, "name": "✨ Импровизация", "desc": "Водитель сам найдет, что в вас похвалить. Рискованно, но приятно. Полный фристайл и галантность."},
-    "propose": {"cat": 5, "price": 1000, "name": "💍 Сделать предложение", "desc": "Вы делаете предложение руки, сердца или ипотеки водителю. Шанс 50/50. ⚠️ ВНИМАНИЕ: В случае отказа 1000₽ НЕ ВОЗВРАЩАЮТСЯ!"}
+    "improv": {"cat": 5, "price": 0, "name": "✨ Импровизация", "desc": "Водитель сам найдет, что в вас похвалить. Рискованно, но приятно. Полный фристайл."},
+    "propose": {"cat": 5, "price": 1000, "name": "💍 Сделать предложение", "desc": "Вы делаете предложение руки, сердца или ипотеки водителю. Шанс 50/50. ⚠️ ПРИ ОТКАЗЕ 1000₽ НЕ ВОЗВРАЩАЮТСЯ!"}
 }
 
 CATEGORIES = {1: "🟢 ЛАЙТ", 2: "🟡 МЕДИУМ", 3: "🔴 ХАРД", 4: "☠️ VIP БЕЗУМИЕ", 5: "🌹 ДЛЯ ДАМ"}
@@ -209,25 +207,46 @@ CATEGORIES = {1: "🟢 ЛАЙТ", 2: "🟡 МЕДИУМ", 3: "🔴 ХАРД", 4:
 # 🛠 FSM STATES
 # ==========================================
 class OrderRide(StatesGroup):
-    waiting_for_from = State(); waiting_for_to = State(); waiting_for_phone = State(); waiting_for_price = State()
+    waiting_for_from = State()
+    waiting_for_to = State()
+    waiting_for_phone = State() 
+    waiting_for_price = State()
+
 class CustomIdea(StatesGroup):
-    waiting_for_idea = State(); waiting_for_price = State()
+    waiting_for_idea = State()
+    waiting_for_price = State()
+
 class DriverCounterOffer(StatesGroup):
     waiting_for_offer = State()
+
 class AddStop(StatesGroup):
-    waiting_for_address = State(); waiting_for_price = State()
+    waiting_for_address = State()
+    waiting_for_price = State()
+
 class DriverRegistration(StatesGroup):
-    waiting_for_fio = State(); waiting_for_car = State(); waiting_for_payment_info = State(); waiting_for_code = State()
+    waiting_for_fio = State()
+    waiting_for_car = State()
+    waiting_for_payment_info = State()
+    waiting_for_code = State()
+
 class DriverVipRegistration(StatesGroup):
-    waiting_for_fio = State(); waiting_for_car = State(); waiting_for_payment_info = State(); waiting_for_code = State()
+    waiting_for_fio = State()
+    waiting_for_car = State()
+    waiting_for_payment_info = State()
+    waiting_for_code = State()
+
 class DriverChangeCode(StatesGroup):
     waiting_for_new_code = State()
+
 class UnlockMenu(StatesGroup):
     waiting_for_key = State()
+
 class AdminEditDriver(StatesGroup):
     waiting_for_new_value = State()
+
 class AdminBilling(StatesGroup):
     waiting_for_custom_req = State()
+
 class AdminBroadcast(StatesGroup):
     waiting_for_text = State()
 
@@ -257,7 +276,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     
     if is_client_accepted(message.from_user.id):
-        await message.answer("⚠️ <b>CRAZY TAXI: С возвращением!</b>\nДвери заблокированы, шоу продолжается.", reply_markup=main_kb)
+        await message.answer("⚠️ <b>CRAZY TAXI: С возвращением!</b>", reply_markup=main_kb)
     else:
         await message.answer(
             "⚠️ <b>CRAZY TAXI: ЗОНА ПОВЫШЕННОГО РИСКА</b>\n\n"
@@ -277,7 +296,7 @@ async def tos_accepted(callback: types.CallbackQuery, state: FSMContext):
     conn.commit()
     conn.close()
     await callback.message.edit_text("🔥 <b>КОНТРАКТ ПОДПИСАН!</b>")
-    await callback.message.answer("Добро пожаловать в сервис доп. услуг. Выбирай 👇", reply_markup=main_kb)
+    await callback.message.answer("Добро пожаловать в элитный сервис доп. услуг. Выбирай 👇", reply_markup=main_kb)
 
 @dp.callback_query(F.data == "decline_tos")
 async def tos_declined(callback: types.CallbackQuery, state: FSMContext):
@@ -547,47 +566,47 @@ async def show_cats(message: types.Message, state: FSMContext):
     await message.answer("🔥 <b>ВЫБЕРИТЕ УРОВЕНЬ ЖЕСТКОСТИ:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
 
 @dp.callback_query(F.data.startswith("cat_"))
-async def open_cat(c: types.CallbackQuery, state: FSMContext):
-    cat_id = int(c.data.split("_")[1])
+async def open_cat(callback: types.CallbackQuery, state: FSMContext):
+    cat_id = int(callback.data.split("_")[1])
     btns = []
     for k, v in CRAZY_SERVICES.items():
         if v["cat"] == cat_id:
             btns.append([InlineKeyboardButton(text=f"{v['name']} — {v['price']}₽", callback_data=f"csel_{k}")])
     btns.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_cats")])
-    await c.message.edit_text(f"📂 <b>{CATEGORIES[cat_id]}</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
+    await callback.message.edit_text(f"📂 <b>{CATEGORIES[cat_id]}</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
 
 @dp.callback_query(F.data == "back_cats")
-async def back_cats(c: types.CallbackQuery, state: FSMContext):
+async def back_cats(callback: types.CallbackQuery, state: FSMContext):
     btns = [[InlineKeyboardButton(text=n, callback_data=f"cat_{i}")] for i, n in CATEGORIES.items()]
-    await c.message.edit_text("🔥 <b>УРОВНИ:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
+    await callback.message.edit_text("🔥 <b>УРОВНИ:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
 
 @dp.callback_query(F.data.startswith("csel_"))
-async def sel_srv(c: types.CallbackQuery, state: FSMContext):
-    key = c.data.split("_")[1]
+async def sel_srv(callback: types.CallbackQuery, state: FSMContext):
+    key = callback.data.split("_")[1]
     srv = CRAZY_SERVICES[key]
     text = f"🎭 <b>{srv['name']}</b>\n💰 <b>{srv['price']}₽</b>\n\n📝 <i>{srv['desc']}</i>"
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ЗАКАЗАТЬ", callback_data=f"do_order_{key}")], [InlineKeyboardButton(text="🔙 Назад", callback_data=f"cat_{srv['cat']}")]])
-    await c.message.edit_text(text, reply_markup=kb)
+    await callback.message.edit_text(text, reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("do_order_"))
-async def do_order(c: types.CallbackQuery, state: FSMContext):
-    key = c.data.split("_")[-1] 
+async def do_order(callback: types.CallbackQuery, state: FSMContext):
+    key = callback.data.split("_")[-1] 
     srv = CRAZY_SERVICES[key]
-    cid, did = c.from_user.id, client_driver_link.get(c.from_user.id)
+    cid, did = callback.from_user.id, client_driver_link.get(callback.from_user.id)
     active_orders[cid] = {"type": "crazy", "status": "direct", "price": str(srv["price"]), "driver_id": did, "service": srv}
-    await c.message.edit_text("⏳ <b>Отправляем...</b>")
+    await callback.message.edit_text("⏳ <b>Отправляем...</b>")
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ПРИНЯТЬ", callback_data=f"drv_acc_{cid}")]])
     await bot.send_message(did, f"🔔 <b>ЗАКАЗ</b>\n🎭 {srv['name']}\n💰 {srv['price']}₽\n📝 {srv['desc']}", reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("drv_acc_"))
-async def drv_acc_crazy(c: types.CallbackQuery, state: FSMContext):
-    cid = int(c.data.split("_")[2])
+async def drv_acc_crazy(callback: types.CallbackQuery, state: FSMContext):
+    cid = int(callback.data.split("_")[2])
     order = active_orders.get(cid)
     if not order: return
-    info = get_driver_info(c.from_user.id)
+    info = get_driver_info(callback.from_user.id)
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ГОТОВО / ОПЛАТИЛ", callback_data=f"ask_finish_{cid}")]])
     await bot.send_message(cid, f"✅ <b>Водитель принял!</b>\n💳 Перевод: <code>{info[2]}</code>", reply_markup=kb)
-    await c.message.edit_text("✅ В работе.")
+    await callback.message.edit_text("✅ В работе.")
 
 @dp.message(F.text == "💡 Свой вариант (Идея)")
 async def idea_h(message: types.Message, state: FSMContext):
@@ -698,7 +717,9 @@ async def vip_fin(message: types.Message, state: FSMContext):
         conn.commit()
         await message.answer("🚀 <b>ВЫ ПРИНЯТЫ!</b> Жмите /cab")
         await notify_admins(f"⭐ <b>VIP ({role}):</b> {data['fio']}")
-    except: await message.answer("❌ Код занят.")
+    except Exception as e:
+        logging.error(e)
+        await message.answer("❌ Код занят.")
     finally: conn.close()
     await state.clear()
 
@@ -742,7 +763,9 @@ async def reg_fin(message: types.Message, state: FSMContext):
         await message.answer("📝 Заявка отправлена.")
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ОДОБРИТЬ", callback_data=f"adm_app_{message.from_user.id}")]])
         await notify_admins(f"🚨 <b>НОВЫЙ:</b> {data['fio']}", kb)
-    except: await message.answer("❌ Код занят.")
+    except Exception as e:
+        logging.error(e)
+        await message.answer("❌ Код занят.")
     finally: conn.close()
     await state.clear()
 
@@ -766,11 +789,11 @@ async def admin_panel(message: types.Message, state: FSMContext):
     await message.answer(txt, reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("adm_app_"))
-async def admin_approve(c: types.CallbackQuery, state: FSMContext):
-    if not is_admin(c.from_user.id): return
-    did = int(c.data.split("_")[2])
+async def admin_approve(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id): return
+    did = int(callback.data.split("_")[2])
     update_driver_field(did, "status", "active")
-    await c.message.edit_text("✅ Одобрено.")
+    await callback.message.edit_text("✅ Одобрено.")
     try: await bot.send_message(did, "🎉 Принят! /cab")
     except: pass
 
