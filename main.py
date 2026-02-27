@@ -14,7 +14,7 @@ from aiogram.exceptions import TelegramBadRequest
 logging.basicConfig(level=logging.INFO)
 
 API_TOKEN = os.getenv("API_TOKEN")
-BOSS_ID = os.getenv("DRIVER_ID") # Твой ID как владельца сети
+BOSS_ID = os.getenv("DRIVER_ID") # Твой ID
 
 if not API_TOKEN or not BOSS_ID:
     logging.error("ВНИМАНИЕ: API_TOKEN или DRIVER_ID не найдены!")
@@ -23,7 +23,7 @@ BOSS_ID = int(BOSS_ID)
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
-active_orders = {} # Память для текущих заказов клиентов
+active_orders = {} 
 
 # ==========================================
 # 🗄️ БАЗА ДАННЫХ
@@ -52,7 +52,6 @@ def init_db():
             price INTEGER
         )
     """)
-    
     # АВТО-РЕГИСТРАЦИЯ БОССА
     cursor.execute("SELECT 1 FROM drivers WHERE user_id = ?", (BOSS_ID,))
     if not cursor.fetchone():
@@ -76,7 +75,7 @@ def get_active_drivers():
 def get_driver_info(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT username, car_info, payment_info, balance FROM drivers WHERE user_id=?", (user_id,))
+    cursor.execute("SELECT username, car_info, payment_info, balance, status FROM drivers WHERE user_id=?", (user_id,))
     res = cursor.fetchone()
     conn.close()
     return res
@@ -242,7 +241,7 @@ async def broadcast_order_to_drivers(client_id, order_text, driver_kb, boss_kb):
         active_orders[client_id]['boss_msg_id'] = boss_msg.message_id
         active_orders[client_id]['broadcasting_text'] = order_text
 
-    # 2. Клиент (радар)
+    # 2. Клиент
     search_msg = await bot.send_message(client_id, "📡 <i>Радары включены. Ищем безумцев...</i>")
     await asyncio.sleep(2.5) 
     
@@ -314,8 +313,7 @@ async def driver_takes_crazy(callback: types.CallbackQuery):
     order["driver_id"] = driver_id
     await update_boss_monitor(client_id, driver_id)
     
-    if is_boss_taking: await callback.message.edit_text(f"✅ Ты забрал заказ: {order['service']['name']}!")
-    else: await callback.message.edit_text(f"✅ Ты забрал заказ: {order['service']['name']}!")
+    await callback.message.edit_text(f"✅ Ты забрал заказ: {order['service']['name']}!")
     
     driver_info = get_driver_info(driver_id)
     price_val = extract_price(order['price'])
@@ -454,9 +452,8 @@ async def driver_takes_taxi(callback: types.CallbackQuery):
     
     finish_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Завершить", callback_data=f"finish_taxi_{client_id}")]])
     
-    if is_boss_taking: await callback.message.edit_text(f"✅ Ты забрал такси!\n📞: <b>{order['phone']}</b>", reply_markup=finish_kb)
-    else: await callback.message.edit_text(f"✅ Ты забрал поездку!\n📞: <b>{order['phone']}</b>", reply_markup=finish_kb)
-        
+    await callback.message.edit_text(f"✅ Ты забрал поездку!\n📞: <b>{order['phone']}</b>", reply_markup=finish_kb)
+    
     driver_info = get_driver_info(driver_id)
     drv_name = "Сам БОСС Crazy Taxi" if is_boss_taking else driver_info[0]
     await bot.send_message(client_id, f"🚕 <b>ВОДИТЕЛЬ ЕДЕТ!</b>\n{drv_name} ({driver_info[1]})\nТел: {order['phone']}!")
@@ -559,7 +556,7 @@ async def cmd_driver_cabinet(message: types.Message):
     if not res or res[0] != 'active':
         await message.answer("❌ Доступно только одобренным водителям.")
         return
-        
+    
     balance_text = ""
     hist_text = ""
     if message.from_user.id != BOSS_ID:
@@ -578,7 +575,6 @@ async def cmd_driver_cabinet(message: types.Message):
         if order.get("driver_id") == message.from_user.id and order.get("status") == "accepted":
             name = order.get("service", {}).get("name") if order["type"] == "crazy" else f"Такси ({order['to']})"
             my_active.append(f"🔹 {name} | 💰 {order['price']}")
-
     active_text = "\n".join(my_active) if my_active else "<i>Пусто.</i>"
     await message.answer(f"🪪 <b>КАБИНЕТ ВОДИТЕЛЯ</b>\n\n{hist_text}{balance_text}🔥 <b>Заказы в работе:</b>\n{active_text}")
 
@@ -636,7 +632,7 @@ async def admin_reject_driver(callback: types.CallbackQuery):
     await callback.message.edit_text("❌ Отклонен.")
 
 # ====================
-# 🛠 РЕДАКТИРОВАНИЕ ВОДИТЕЛЯ (АДМИН)
+# 🛠 УПРАВЛЕНИЕ ВОДИТЕЛЯМИ (АДМИН)
 # ====================
 @dp.message(Command("admin"))
 async def cmd_admin(message: types.Message):
@@ -649,7 +645,7 @@ async def cmd_admin(message: types.Message):
     text = "👑 <b>УПРАВЛЕНИЕ</b> 👑\n\n"
     for d in all_drivers:
         status_emoji = "🟢" if d[2] == 'active' else "🔴"
-        text += f"{status_emoji} <b>{d[1]}</b> (ID: {d[0]})\nДолг: {d[3]}₽\nРед: /edit_{d[0]} | Блок: /block_{d[0]}\n---\n"
+        text += f"{status_emoji} <b>{d[1]}</b> (ID: {d[0]})\nДолг: {d[3]}₽\n👉 /edit_{d[0]}\n---\n"
     await message.answer(text)
 
 @dp.message(F.text.startswith("/edit_"))
@@ -658,14 +654,19 @@ async def edit_driver_menu(message: types.Message):
     d_id = int(message.text.split("_")[1])
     info = get_driver_info(d_id)
     if not info:
-        await message.answer("❌ Водитель не найден")
+        await message.answer("❌ Не найден")
         return
         
-    text = f"✏️ <b>РЕДАКТОР: {info[0]}</b>\n\n🚗 Авто: {info[1]}\n💳 Реквизиты: {info[2]}\n💰 Баланс: {info[3]}₽"
+    status_icon = "🔓" if info[4] == 'active' else "🔒"
+    block_action = "block" if info[4] == 'active' else "unblock"
+    block_text = "🔒 Заблочить" if info[4] == 'active' else "🔓 Разблочить"
+        
+    text = f"✏️ <b>РЕДАКТОР: {info[0]}</b>\n\nСтатус: {status_icon} {info[4]}\n🚗 Авто: {info[1]}\n💳 Реквизиты: {info[2]}\n💰 Баланс: {info[3]}₽"
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚗 Изм. Авто", callback_data=f"edt_car_{d_id}")],
-        [InlineKeyboardButton(text="💳 Изм. Рекв.", callback_data=f"edt_pay_{d_id}")],
+        [InlineKeyboardButton(text="🚗 Изм. Авто", callback_data=f"edt_car_{d_id}"), InlineKeyboardButton(text="💳 Изм. Рекв.", callback_data=f"edt_pay_{d_id}")],
         [InlineKeyboardButton(text="💰 Изм. Баланс", callback_data=f"edt_bal_{d_id}")],
+        [InlineKeyboardButton(text=block_text, callback_data=f"adm_act_{block_action}_{d_id}")],
+        [InlineKeyboardButton(text="💸 Отправить счет", callback_data=f"adm_act_sendbill_{d_id}")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="edt_back")]
     ])
     await message.answer(text, reply_markup=kb)
@@ -675,46 +676,52 @@ async def edit_driver_cb(callback: types.CallbackQuery, state: FSMContext):
     if callback.data == "edt_back":
         await callback.message.delete()
         return
-        
     parts = callback.data.split("_")
-    field_code = parts[1] # car, pay, bal
-    d_id = int(parts[2])
-    
+    field_code, d_id = parts[1], int(parts[2])
     field_map = {"car": "car_info", "pay": "payment_info", "bal": "balance"}
-    target_field = field_map[field_code]
-    
-    await state.update_data(edit_driver_id=d_id, edit_field=target_field)
-    await callback.message.answer(f"✍️ Введи новое значение для <b>{target_field}</b>:")
+    await state.update_data(edit_driver_id=d_id, edit_field=field_map[field_code])
+    await callback.message.answer(f"✍️ Введи новое значение:")
     await state.set_state(AdminEditDriver.waiting_for_new_value)
     await callback.answer()
 
 @dp.message(AdminEditDriver.waiting_for_new_value)
 async def process_new_driver_value(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    d_id = data['edit_driver_id']
-    field = data['edit_field']
+    d_id, field = data['edit_driver_id'], data['edit_field']
     new_val = message.text
-    
-    # Для баланса проверяем число
     if field == "balance":
         try: new_val = int(new_val)
         except: 
-            await message.answer("❌ Баланс должен быть числом.")
+            await message.answer("❌ Только число.")
             return
-
     update_driver_field(d_id, field, new_val)
-    await message.answer(f"✅ Успешно обновлено! Проверь /edit_{d_id}")
+    await message.answer(f"✅ Обновлено! /edit_{d_id}")
     await state.clear()
 
-@dp.message(F.text.startswith("/block_"))
-async def block_driver(message: types.Message):
-    if message.from_user.id != BOSS_ID: return
-    d_id = int(message.text.split("_")[1])
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("UPDATE drivers SET status='blocked' WHERE user_id=?", (d_id,))
-    conn.commit()
-    conn.close()
-    await message.answer(f"✅ Заблокирован.")
+@dp.callback_query(F.data.startswith("adm_act_"))
+async def admin_driver_actions(callback: types.CallbackQuery):
+    if callback.from_user.id != BOSS_ID: return
+    parts = callback.data.split("_")
+    action, d_id = parts[2], int(parts[3])
+    
+    if action == "block":
+        update_driver_field(d_id, "status", "blocked")
+        await callback.message.edit_text(f"🔒 Водитель {d_id} заблокирован.")
+        try: await bot.send_message(d_id, "❌ Твой аккаунт заблокирован Боссом.")
+        except: pass
+    elif action == "unblock":
+        update_driver_field(d_id, "status", "active")
+        await callback.message.edit_text(f"🔓 Водитель {d_id} разблокирован.")
+        try: await bot.send_message(d_id, "✅ Твой аккаунт снова активен!")
+        except: pass
+    elif action == "sendbill":
+        info = get_driver_info(d_id)
+        if info[3] <= 0:
+            await callback.answer("У него нет долгов!", show_alert=True)
+            return
+        await callback.answer("Счет отправлен!")
+        try: await bot.send_message(d_id, f"⚠️ <b>ОПЛАТИ ДОЛГ!</b>\nСумма: <b>{info[3]}₽</b>\nРеквизиты Босса: Яндекс Банк +79012723729")
+        except: pass
 
 async def main():
     await dp.start_polling(bot)
