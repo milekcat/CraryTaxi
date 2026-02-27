@@ -117,17 +117,68 @@ def is_client_accepted(user_id):
     conn.close()
     return bool(result)
 
-# --- БАЗА УСЛУГ ---
+# --- БАЗА УСЛУГ (ПОДРОБНОЕ ОПИСАНИЕ) ---
 CRAZY_SERVICES = {
-    "candy": {"name": "🍬 Конфетка", "price": 0, "desc": "Водитель торжественно вручит вам вкусную конфетку."},
-    "joke": {"name": "🎭 Анекдот", "price": 50, "desc": "Анекдот из золотой коллекции."},
-    "tale": {"name": "📖 Сказка на ночь", "price": 300, "desc": "Захватывающая история из жизни таксиста."},
-    "spy": {"name": "🕵️‍♂️ Шпион", "price": 2000, "desc": "Едем за 'той машиной'. Водитель в черных очках."},
-    "karaoke": {"name": "🎤 Караоке-баттл", "price": 5000, "desc": "Поем во весь голос хиты 90-х."},
-    "dance": {"name": "🕺 Танцы на светофоре", "price": 15000, "desc": "Красный свет? Я выхожу и танцую!"},
-    "kidnap": {"name": "🎭 Похищение", "price": 30000, "desc": "Везут пить чай на природу (по сценарию)."},
-    "tarzan": {"name": "🦍 Тарзан-шоу", "price": 50000, "desc": "Кричу и бью себя в грудь. Максимальный кринж!"},
-    "burn": {"name": "🔥 Сжечь машину", "price": 1000000, "desc": "Ты даешь лям, я даю канистру."}
+    "candy": {
+        "name": "🍬 Конфетка", 
+        "price": 0, 
+        "desc": "Водитель с максимально серьезным лицом вручает вам элитную барбариску или мятный леденец. Это знак уважения."
+    },
+    "joke": {
+        "name": "🎭 Анекдот", 
+        "price": 50, 
+        "desc": "Анекдот категории Б из золотой коллекции таксиста. Смеяться не обязательно, но желательно, чтобы не обидеть творческую натуру."
+    },
+    "poem": {
+        "name": "📜 Стих с выражением", 
+        "price": 100, 
+        "desc": "Водитель (по возможности) встает на табуретку или просто поворачивается и читает стихотворение с чувством, как на школьной линейке."
+    },
+    "sleep": {
+        "name": "🛌 Сон под шепот ям", 
+        "price": 150, 
+        "desc": "Режим 'Ниндзя'. Музыка выключается, водитель молчит как рыба, ямы объезжает шепотом. Вы спите, мы охраняем ваш покой."
+    },
+    "tale": {
+        "name": "📖 Сказка на ночь", 
+        "price": 300, 
+        "desc": "Потрясающая (и на 90% выдуманная) история о том, как водитель однажды вез олигарха, инопланетянина и вашу бабушку."
+    },
+    "granny": {
+        "name": "👵 Бабушка-ворчунья", 
+        "price": 800, 
+        "desc": "Ролевая игра. Всю дорогу буду бубнить: 'Куда прешь?', 'Наркоманы одни', 'Шапку надень!'. Полное погружение в детство."
+    },
+    "spy": {
+        "name": "🕵️‍♂️ Шпионский эскорт", 
+        "price": 2000, 
+        "desc": "Водитель надевает черные очки и кепку. Нервно смотрит в зеркала. Говорит кодами: 'Объект на борту, хвоста нет'. Паранойя включена."
+    },
+    "karaoke": {
+        "name": "🎤 Караоке-баттл", 
+        "price": 5000, 
+        "desc": "Врубаем хиты 90-х на полную. Поем вместе 'Рюмку водки' или 'Знаешь ли ты'. Водитель фальшивит громко и от души."
+    },
+    "dance": {
+        "name": "🕺 Танцы на светофоре", 
+        "price": 15000, 
+        "desc": "На красном свете водитель выбегает из машины и танцует макарену или лезгинку перед капотом. Стыдно вам, весело всем вокруг!"
+    },
+    "kidnap": {
+        "name": "🎭 Дружеское похищение", 
+        "price": 30000, 
+        "desc": "Вас (понарошку) грузят в авто, надевают мешок на голову (по желанию) и везут в лес... пить чай с баранками. Строго по сценарию!"
+    },
+    "tarzan": {
+        "name": "🦍 Тарзан-шоу", 
+        "price": 50000, 
+        "desc": "Водитель бьет себя в грудь, издает гортанные звуки, рычит на прохожих и называет другие машины 'железными буйволами'. Максимальный кринж."
+    },
+    "burn": {
+        "name": "🔥 Сжечь машину", 
+        "price": 1000000, 
+        "desc": "Мы едем на пустырь. Вы даете миллион, я даю канистру и спички. Эпичная музыка, машина горит, вы уходите в закат не оборачиваясь."
+    }
 }
 
 class OrderRide(StatesGroup):
@@ -289,7 +340,7 @@ async def process_crazy_selection(callback: types.CallbackQuery):
     active_orders[client_id] = {"type": "crazy", "service": service, "status": "pending", "price": str(service["price"])}
     price_text = "БЕСПЛАТНО" if service["price"] == 0 else f"{service['price']}₽"
     
-    await callback.message.edit_text(f"🎪 <b>ВЫБРАНА УСЛУГА:</b> {service['name']}\n💰 <b>Стоимость:</b> {price_text}")
+    await callback.message.edit_text(f"🎪 <b>ВЫБРАНА УСЛУГА:</b> {service['name']}\n📝 <b>Описание:</b> {service['desc']}\n💰 <b>Стоимость:</b> {price_text}")
     
     driver_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⚡️ ЗАБРАТЬ", callback_data=f"take_crazy_{client_id}")]])
     boss_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⚡️ ЗАБРАТЬ (БОСС)", callback_data=f"boss_take_crazy_{client_id}")]])
@@ -452,8 +503,9 @@ async def driver_takes_taxi(callback: types.CallbackQuery):
     
     finish_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Завершить", callback_data=f"finish_taxi_{client_id}")]])
     
-    await callback.message.edit_text(f"✅ Ты забрал поездку!\n📞: <b>{order['phone']}</b>", reply_markup=finish_kb)
-    
+    if is_boss_taking: await callback.message.edit_text(f"✅ Ты забрал такси!\n📞: <b>{order['phone']}</b>", reply_markup=finish_kb)
+    else: await callback.message.edit_text(f"✅ Ты забрал поездку!\n📞: <b>{order['phone']}</b>", reply_markup=finish_kb)
+        
     driver_info = get_driver_info(driver_id)
     drv_name = "Сам БОСС Crazy Taxi" if is_boss_taking else driver_info[0]
     await bot.send_message(client_id, f"🚕 <b>ВОДИТЕЛЬ ЕДЕТ!</b>\n{drv_name} ({driver_info[1]})\nТел: {order['phone']}!")
