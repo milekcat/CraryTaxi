@@ -19,6 +19,10 @@ logging.basicConfig(level=logging.INFO)
 API_TOKEN = os.getenv("API_TOKEN")
 OWNER_ID = os.getenv("DRIVER_ID") 
 
+# 🔥 УНИВЕРСАЛЬНЫЙ КЛЮЧ ДЛЯ МГНОВЕННОЙ РЕГИСТРАЦИИ ВОДИТЕЛЯ
+# Если юзер введет /vip CRAZY_START - он станет водителем без одобрения
+MASTER_INVITE_KEY = "CRAZY_START"
+
 if not API_TOKEN or not OWNER_ID:
     logging.error("⛔ КРИТИЧЕСКАЯ ОШИБКА: Токены не найдены!")
     exit()
@@ -40,7 +44,6 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # Таблица водителей (с ролью и кодом)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS drivers (
             user_id INTEGER PRIMARY KEY,
@@ -79,7 +82,7 @@ def init_db():
 init_db()
 
 # ==========================================
-# 🛠 ФУНКЦИИ БАЗЫ ДАННЫХ
+# 🛠 ФУНКЦИИ
 # ==========================================
 
 def get_all_admins():
@@ -146,17 +149,16 @@ def is_client_accepted(user_id):
 async def notify_admins(text, markup=None):
     admins = get_all_admins()
     for admin_id in admins:
-        try:
-            await bot.send_message(admin_id, text, reply_markup=markup)
+        try: await bot.send_message(admin_id, text, reply_markup=markup)
         except: pass
 
 # ==========================================
-# 📜 МЕНЮ УСЛУГ (ПОЛНОЕ + ДЛЯ ДАМ)
+# 📜 МЕНЮ УСЛУГ
 # ==========================================
 CRAZY_SERVICES = {
     # LEVEL 1
-    "candy": {"cat": 1, "price": 0, "name": "🍬 Конфетка", "desc": "Водитель с серьезным лицом вручает вам элитную конфету. Знак уважения."},
-    "nose": {"cat": 1, "price": 300, "name": "👃 Палец в носу", "desc": "Водитель едет с пальцем в носу. Вы платите за его страдания."},
+    "candy": {"cat": 1, "price": 0, "name": "🍬 Конфетка", "desc": "Водитель с серьезным лицом вручает вам элитную конфету."},
+    "nose": {"cat": 1, "price": 300, "name": "👃 Палец в носу", "desc": "Водитель едет с пальцем в носу. Вы платите за его моральный ущерб."},
     "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Открывает дверь, кланяется, называет 'Сир' или 'Миледи'."},
     "joke": {"cat": 1, "price": 50, "name": "🤡 Тупой анекдот", "desc": "Анекдот категории Б. Смеяться желательно."},
     "silence": {"cat": 1, "price": 150, "name": "🤐 Тишина", "desc": "Музыка выкл, водитель молчит. Режим 'Монах'."},
@@ -175,10 +177,10 @@ CRAZY_SERVICES = {
     "burn": {"cat": 4, "price": 1000000, "name": "🔥 Сжечь авто", "desc": "Едем на пустырь и сжигаем машину. Эпик."},
     # LEVEL 5 (ДЛЯ ДАМ)
     "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Водитель сделает изысканный комплимент вашим глазам."},
-    "smile": {"cat": 5, "price": 0, "name": "😁 Улыбка", "desc": "Комплимент вашей улыбке. Освещает салон лучше фар."},
+    "smile": {"cat": 5, "price": 0, "name": "😁 Улыбка", "desc": "Комплимент вашей улыбке (бесплатно)."},
     "style": {"cat": 5, "price": 0, "name": "👠 Икона стиля", "desc": "Восхищение вашим образом. 'Вы с показа мод?'"},
     "improv": {"cat": 5, "price": 0, "name": "✨ Импровизация", "desc": "Водитель сам найдет, что в вас похвалить. Эксклюзив."},
-    "propose": {"cat": 5, "price": 1000, "name": "💍 Предложение", "desc": "Вы делаете предложение водителю (руки/ипотеки). ⚠️ При отказе 1000₽ НЕ возвращаются!"}
+    "propose": {"cat": 5, "price": 1000, "name": "💍 Сделать предложение", "desc": "Вы делаете предложение водителю (руки/ипотеки). ⚠️ При отказе 1000₽ НЕ возвращаются!"}
 }
 
 CATEGORIES = {
@@ -186,7 +188,7 @@ CATEGORIES = {
     2: "🟡 МЕДИУМ (Ролевые)",
     3: "🔴 ХАРД (Треш)",
     4: "☠️ VIP БЕЗУМИЕ",
-    5: "🌹 ДЛЯ ДАМ (Бесплатно/Риск)"
+    5: "🌹 ДЛЯ ДАМ (Спецраздел)"
 }
 
 # ==========================================
@@ -206,6 +208,11 @@ class DriverCounterOffer(StatesGroup):
     waiting_for_offer = State()
 
 class DriverRegistration(StatesGroup):
+    waiting_for_car = State()
+    waiting_for_payment_info = State()
+    waiting_for_code = State()
+
+class DriverVipRegistration(StatesGroup): # Для мгновенной регистрации
     waiting_for_car = State()
     waiting_for_payment_info = State()
     waiting_for_code = State()
@@ -275,10 +282,6 @@ async def check_tos(message: types.Message) -> bool:
 async def lawyer_menu(message: types.Message):
     await message.answer(
         "⚖️ <b>ЮРИДИЧЕСКИЙ ОТДЕЛ</b>\n\n"
-        "Хочешь пожаловаться? Наш адвокат:\n"
-        "• Знает законы Хаммурапи наизусть.\n"
-        "• Докажет, что твой крик — это песня радости.\n"
-        "• Берет оплату борзыми щенками.\n\n"
         "<i>Жми кнопку, если не боишься встречного иска.</i>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🚨 ПОЖАЛОВАТЬСЯ", callback_data="call_lawyer")]])
     )
@@ -308,7 +311,7 @@ async def update_admins_monitor(client_id, taking_driver_id):
 async def broadcast_order_to_drivers(client_id, order_text, driver_kb, admin_kb):
     admins = get_all_admins()
     admin_msg_map = {}
-    admin_text = f"🚨 <b>МОНИТОРИНГ (ВСЕ АДМИНЫ)</b>\n\n{order_text}"
+    admin_text = f"🚨 <b>МОНИТОРИНГ</b>\n\n{order_text}"
     
     for admin_id in admins:
         try:
@@ -326,12 +329,15 @@ async def broadcast_order_to_drivers(client_id, order_text, driver_kb, admin_kb)
     all_active = get_active_drivers()
     simple_drivers = [d for d in all_active if d not in admins]
     
-    tasks = []
-    for d_id in simple_drivers:
-        tasks.append(bot.send_message(d_id, f"⚡ <b>ЗАКАЗ!</b>\n{order_text}", reply_markup=driver_kb))
-    
-    if tasks: await asyncio.gather(*tasks, return_exceptions=True)
-    await search_msg.edit_text("⏳ <b>Запрос отправлен!</b> Ждем.")
+    # Фикс: если никого нет, пишем клиенту, но админы все равно видят заказ
+    if not simple_drivers:
+        await search_msg.edit_text("😔 <b>Водители заняты.</b> Администратор уведомлен.")
+    else:
+        tasks = []
+        for d_id in simple_drivers:
+            tasks.append(bot.send_message(d_id, f"⚡ <b>ЗАКАЗ!</b>\n{order_text}", reply_markup=driver_kb))
+        if tasks: await asyncio.gather(*tasks, return_exceptions=True)
+        await search_msg.edit_text("⏳ <b>Запрос отправлен!</b> Ждем.")
 
 # ==========================================
 # 📜 МЕНЮ (КАТЕГОРИИ)
@@ -342,10 +348,7 @@ async def show_cats(message: types.Message):
     if message.from_user.id not in client_driver_link:
         await message.answer("🔒 <b>ДОСТУП ЗАКРЫТ!</b>\nСядь в машину и введи код водителя.", reply_markup=main_kb)
         return
-    
-    btns = []
-    for cat_id, cat_name in CATEGORIES.items():
-        btns.append([InlineKeyboardButton(text=cat_name, callback_data=f"cat_{cat_id}")])
+    btns = [[InlineKeyboardButton(text=n, callback_data=f"cat_{i}")] for i, n in CATEGORIES.items()]
     await message.answer("🔥 <b>ВЫБЕРИ КАТЕГОРИЮ:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
 
 @dp.callback_query(F.data.startswith("cat_"))
@@ -373,7 +376,6 @@ async def sel_srv(c: types.CallbackQuery):
     
     pr_text = "БЕСПЛАТНО" if srv['price'] == 0 else f"{srv['price']}₽"
     text = f"🎭 <b>{srv['name']}</b>\n💰 <b>{pr_text}</b>\n\n📝 <i>{srv['desc']}</i>"
-    
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ ЗАКАЗАТЬ", callback_data=f"do_order_{key}")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data=f"cat_{srv['cat']}")]
@@ -635,7 +637,7 @@ async def cab_pay(c: types.CallbackQuery):
     await c.message.answer(f"💸 Долг: <b>{info[3]}₽</b>\nПереведи Боссу: <b>{boss[2]}</b>")
     await c.answer()
 
-# ✅ ИСПРАВЛЕНО: Принимаем и /driver, и /drive
+# ✅ ИСПРАВЛЕНИЕ: Теперь бот принимает и /driver, и /drive
 @dp.message(Command("driver", "drive"))
 async def reg_start(m: types.Message, s: FSMContext):
     info = get_driver_info(m.from_user.id)
@@ -670,6 +672,47 @@ async def reg_fin(m: types.Message, s: FSMContext):
         await m.answer("📝 Отправлено.")
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ОДОБРИТЬ", callback_data=f"adm_app_{m.from_user.id}")]])
         await notify_admins(f"🚨 <b>НОВЫЙ</b>\n@{m.from_user.username}\n{data['car']}", kb)
+    except:
+        await m.answer("❌ Код занят.")
+    finally: conn.close()
+    await s.clear()
+
+# 🔥 БЫСТРЫЙ ВХОД ПО КЛЮЧУ
+@dp.message(Command("vip"))
+async def vip_reg(m: types.Message, s: FSMContext):
+    try:
+        key = m.text.split()[1]
+        if key == MASTER_INVITE_KEY:
+            await m.answer("🔑 <b>VIP КЛЮЧ ПРИНЯТ!</b>\nЗаполняем анкету.\n\n🚕 Твоя машина:")
+            await s.set_state(DriverVipRegistration.waiting_for_car)
+        else:
+            await m.answer("❌ Неверный ключ.")
+    except:
+        await m.answer("Пиши: /vip КОД")
+
+@dp.message(DriverVipRegistration.waiting_for_car)
+async def vip_car(m: types.Message, s: FSMContext):
+    await s.update_data(car=m.text)
+    await m.answer("💳 Реквизиты:")
+    await s.set_state(DriverVipRegistration.waiting_for_payment_info)
+
+@dp.message(DriverVipRegistration.waiting_for_payment_info)
+async def vip_pay(m: types.Message, s: FSMContext):
+    await s.update_data(pay=m.text)
+    await m.answer("🔑 Придумай свой код:")
+    await s.set_state(DriverVipRegistration.waiting_for_code)
+
+@dp.message(DriverVipRegistration.waiting_for_code)
+async def vip_fin(m: types.Message, s: FSMContext):
+    code = m.text.upper().strip()
+    data = await s.get_data()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute("INSERT INTO drivers (user_id, username, car_info, payment_info, access_code, status) VALUES (?, ?, ?, ?, ?, 'active')", 
+                     (m.from_user.id, m.from_user.username, data['car'], data['pay'], code))
+        conn.commit()
+        await m.answer("🚀 <b>ТЫ В ИГРЕ!</b>\nСтатус: ACTIVE. Жми /cab")
+        await notify_admins(f"⭐ <b>VIP РЕГИСТРАЦИЯ</b>\n@{m.from_user.username}")
     except:
         await m.answer("❌ Код занят.")
     finally: conn.close()
