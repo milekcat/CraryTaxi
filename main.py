@@ -20,7 +20,7 @@ API_TOKEN = os.getenv("API_TOKEN")
 OWNER_ID = os.getenv("DRIVER_ID") 
 
 if not API_TOKEN or not OWNER_ID:
-    logging.error("⛔ КРИТИЧЕСКАЯ ОШИБКА: API_TOKEN или DRIVER_ID не найдены!")
+    logging.error("⛔ КРИТИЧЕСКАЯ ОШИБКА: Токены не найдены!")
     exit()
 
 OWNER_ID = int(OWNER_ID)
@@ -40,6 +40,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
+    # Таблица водителей (с ролью и кодом)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS drivers (
             user_id INTEGER PRIMARY KEY,
@@ -62,7 +63,7 @@ def init_db():
         )
     """)
     
-    # Авто-регистрация ВЛАДЕЛЬЦА
+    # Авто-регистрация ВЛАДЕЛЬЦА (Создается автоматически при старте)
     cursor.execute("SELECT 1 FROM drivers WHERE user_id = ?", (OWNER_ID,))
     if not cursor.fetchone():
         cursor.execute(
@@ -70,6 +71,7 @@ def init_db():
             (OWNER_ID, "BOSS_NETWORK", "⚫ ЧЕРНАЯ ВОЛГА (БОСС)", "Яндекс Банк +79012723729", "BOSS")
         )
     else:
+        # Если база есть, обновляем права владельца на всякий случай
         cursor.execute("UPDATE drivers SET role='owner', status='active' WHERE user_id=?", (OWNER_ID,))
         
     conn.commit()
@@ -157,7 +159,7 @@ CRAZY_SERVICES = {
     # --- LEVEL 1: ЛАЙТ ---
     "candy": {
         "cat": 1, "price": 0, "name": "🍬 Конфетка", 
-        "desc": "Водитель с максимально серьезным лицом вручает вам элитную барбариску. Это знак глубочайшего уважения."
+        "desc": "Водитель с максимально серьезным лицом (как на похоронах) вручает вам элитную барбариску. Это знак глубочайшего уважения."
     },
     "nose": {
         "cat": 1, "price": 300, "name": "👃 Палец в носу", 
@@ -225,7 +227,7 @@ CRAZY_SERVICES = {
     # --- LEVEL 5: ДЛЯ ДАМ (НОВОЕ) ---
     "eyes": {
         "cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", 
-        "desc": "Водитель сделает изысканный комплимент вашим глазам. Возможно, сравнит их с фарами дальнего света (шутка, будет красиво)."
+        "desc": "Водитель сделает изысканный комплимент вашим глазам. Сравнит их с ксеноновыми фарами (в хорошем смысле!)."
     },
     "smile": {
         "cat": 5, "price": 0, "name": "😁 Улыбка Джоконды", 
@@ -233,7 +235,7 @@ CRAZY_SERVICES = {
     },
     "style": {
         "cat": 5, "price": 0, "name": "👠 Икона стиля", 
-        "desc": "Восхищение вашим луком. Водитель спросит, не едете ли вы с показа мод в Милане."
+        "desc": "Восхищение вашим образом. Водитель спросит, не едете ли вы с показа мод в Милане."
     },
     "improv": {
         "cat": 5, "price": 0, "name": "✨ Импровизация", 
@@ -360,7 +362,6 @@ async def update_admins_monitor(client_id, taking_driver_id):
     
     drv_info = get_driver_info(taking_driver_id)
     drv_name = f"@{drv_info[0]}" if drv_info[0] else "Unknown"
-    
     taker_role = "👑 БОСС" if taking_driver_id == OWNER_ID else ("👮‍♂️ АДМИН" if is_admin(taking_driver_id) else "🚕 ВОДИТЕЛЬ")
     
     text = f"🚫 <b>ЗАКАЗ ЗАБРАЛ: {taker_role} {drv_name}</b>\nАвто: {drv_info[1]}\n\n{order.get('broadcasting_text','')}"
@@ -661,7 +662,7 @@ async def no_off(c: types.CallbackQuery):
 async def cab(m: types.Message):
     info = get_driver_info(m.from_user.id)
     if not info or info[4] != 'active':
-        await m.answer("❌ Нет доступа. /driver")
+        await m.answer("❌ Нет доступа. /drive")
         return
     conn = sqlite3.connect(DB_PATH)
     hist = conn.execute("SELECT COUNT(*), SUM(price) FROM order_history WHERE driver_id=?", (m.from_user.id,)).fetchone()
@@ -697,7 +698,8 @@ async def cab_pay(c: types.CallbackQuery):
     await c.message.answer(f"💸 Долг: <b>{info[3]}₽</b>\nПереведи Боссу: <b>{boss[2]}</b>")
     await c.answer()
 
-@dp.message(Command("driver"))
+# ✅ ИСПРАВЛЕНИЕ: Теперь бот принимает и /driver, и /drive
+@dp.message(Command("driver", "drive"))
 async def reg_start(m: types.Message, s: FSMContext):
     info = get_driver_info(m.from_user.id)
     if info:
