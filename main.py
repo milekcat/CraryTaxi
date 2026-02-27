@@ -25,7 +25,7 @@ dp = Dispatcher()
 active_orders = {} # Память для текущих заказов клиентов
 
 # ==========================================
-# 🗄️ БАЗА ДАННЫХ: НАСТРОЙКА ПУТИ
+# 🗄️ БАЗА ДАННЫХ
 # ==========================================
 DB_PATH = "/data/taxi_db.sqlite" if os.path.exists("/data") else "taxi_db.sqlite"
 
@@ -81,7 +81,7 @@ def is_client_accepted(user_id):
     conn.close()
     return bool(result)
 
-# --- БАЗА УСЛУГ (РАСШИРЕННАЯ) ---
+# --- БАЗА УСЛУГ ---
 CRAZY_SERVICES = {
     "candy": {"name": "🍬 Конфетка", "price": 0, "desc": "Водитель торжественно вручит вам вкусную конфетку. Мелочь, а приятно!"},
     "napkin": {"name": "🧻 Салфетка", "price": 0, "desc": "Влажная салфетка, чтобы вытереть слезы счастья (или страха)."},
@@ -191,19 +191,45 @@ async def alert_lawyer(callback: types.CallbackQuery):
         except: pass
 
 # ==========================================
-# 🚀 РАССЫЛКА ЗАКАЗОВ ВОДИТЕЛЯМ (ФРАНШИЗА)
+# 🚀 МГНОВЕННАЯ РАССЫЛКА ЗАКАЗОВ ВОДИТЕЛЯМ
 # ==========================================
+async def send_to_driver(d_id, order_text, reply_markup):
+    """Отправка сообщения одному водителю (для параллельного запуска)"""
+    try:
+        await bot.send_message(chat_id=d_id, text=order_text, reply_markup=reply_markup)
+        return True
+    except Exception as e:
+        logging.error(f"Не удалось отправить водителю {d_id}: {e}")
+        return False
+
 async def broadcast_order_to_drivers(client_id, order_text, reply_markup):
-    drivers = get_active_drivers()
-    if not drivers:
-        await bot.send_message(client_id, "😔 Сейчас нет свободных Crazy-водителей. Попробуй позже!")
-        return
+    """Умное распределение заказов с имитацией поиска"""
     
-    for d_id in drivers:
-        try:
-            await bot.send_message(chat_id=d_id, text=order_text, reply_markup=reply_markup)
-        except Exception as e:
-            logging.error(f"Не удалось отправить водителю {d_id}: {e}")
+    # 1. Запускаем "Радар" для клиента
+    search_msg = await bot.send_message(client_id, "📡 <i>Радары включены. Сканируем улицы в поисках безумцев...</i>")
+    await asyncio.sleep(3.5) # Пауза для создания эффекта реального поиска
+    
+    drivers = get_active_drivers()
+    
+    # 2. Если водителей вообще нет на линии
+    if not drivers:
+        await search_msg.edit_text("😔 <b>Все машины сейчас заняты.</b>\nОни либо на других заказах, либо в отключке. Попробуй повторить вызов через пару минут!")
+        if client_id in active_orders:
+            del active_orders[client_id]
+        return
+        
+    # 3. Обновляем статус клиенту
+    await search_msg.edit_text("⏳ <b>Сигнал передан всем водителям на линии!</b>\nЖдем, кто из них успеет забрать заказ первым...")
+    
+    # 4. Мгновенная параллельная рассылка всем водителям одновременно
+    tasks = [send_to_driver(d_id, order_text, reply_markup) for d_id in drivers]
+    results = await asyncio.gather(*tasks)
+    
+    # Если рассылка технически не прошла ни одному
+    if not any(results):
+        await bot.send_message(client_id, "🔌 Произошла ошибка связи с таксопарком. Попробуй позже.")
+        if client_id in active_orders:
+            del active_orders[client_id]
 
 # ==========================================
 # 📜 CRAZY ХАОС-МЕНЮ И ЛОГИКА ОПЛАТЫ
@@ -233,10 +259,11 @@ async def process_crazy_selection(callback: types.CallbackQuery):
     active_orders[client_id] = {"type": "crazy", "service": service, "status": "pending", "price": service["price"]}
     price_text = "БЕСПЛАТНО" if service["price"] == 0 else f"{service['price']}₽"
     
-    await callback.message.edit_text(f"🎪 <b>ВЫБРАНА УСЛУГА:</b> {service['name']}\n📝 <b>Описание:</b> {service['desc']}\n💰 <b>Стоимость:</b> {price_text}\n\n⏳ <i>Ищем свободного безумца за рулем...</i>")
+    await callback.message.edit_text(f"🎪 <b>ВЫБРАНА УСЛУГА:</b> {service['name']}\n📝 <b>Описание:</b> {service['desc']}\n💰 <b>Стоимость:</b> {price_text}")
     
     driver_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⚡️ ЗАБРАТЬ ЗАКАЗ", callback_data=f"take_crazy_{client_id}")]])
     text = f"🚨 <b>ХАОС-ЗАКАЗ!</b> 🚨\nКлиент: @{callback.from_user.username}\nУслуга: <b>{service['name']}</b> ({price_text})\nКто первый?!"
+    
     await broadcast_order_to_drivers(client_id, text, driver_kb)
 
 @dp.callback_query(F.data.startswith("take_crazy_"))
@@ -323,7 +350,7 @@ async def process_custom_idea(message: types.Message, state: FSMContext):
     idea = message.text
     client_id = message.from_user.id
     
-    await message.answer("🧠 Идея отправлена в сеть! Ждем предложений от водителей...", reply_markup=main_kb)
+    await message.answer("✅ <b>Идея зафиксирована!</b>", reply_markup=main_kb)
     await state.clear()
     
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💰 Предложить цену", callback_data=f"idea_take_{client_id}")]])
@@ -364,11 +391,12 @@ async def process_price(message: types.Message, state: FSMContext):
         "from": user_data['from_address'], "to": user_data['to_address']
     }
 
-    await message.answer("⏳ <b>Заказ отправлен в сеть!</b> Ждем водителя...", reply_markup=main_kb)
+    await message.answer("✅ <b>Параметры поездки приняты!</b>", reply_markup=main_kb)
     await state.clear()
 
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Забрать поездку", callback_data=f"take_taxi_{client_id}")]])
     text = f"🚕 <b>ЗАКАЗ ТАКСИ</b> 🚕\n\n📍 Откуда: {user_data['from_address']}\n🏁 Куда: {user_data['to_address']}\n💰 Предлагает: <b>{message.text}₽</b>"
+    
     await broadcast_order_to_drivers(client_id, text, kb)
 
 @dp.callback_query(F.data.startswith("take_taxi_"))
