@@ -12,7 +12,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 from aiogram.client.default import DefaultBotProperties
 
 # ==========================================
-# ⚙️ НАСТРОЙКИ
+# ⚙️ НАСТРОЙКИ СИСТЕМЫ
 # ==========================================
 logging.basicConfig(level=logging.INFO)
 
@@ -20,8 +20,8 @@ API_TOKEN = os.getenv("API_TOKEN")
 OWNER_ID = os.getenv("DRIVER_ID") 
 
 # 🔑 СЕКРЕТНЫЕ КЛЮЧИ
-KEY_VIP_DRIVER = "CRAZY_START"   
-KEY_VIP_ADMIN = "BIG_BOSS_777"   
+KEY_VIP_DRIVER = "CRAZY_START"   # Дает роль DRIVER + статус ACTIVE
+KEY_VIP_ADMIN = "BIG_BOSS_777"   # Дает роль ADMIN + статус ACTIVE
 
 LAWYER_LINK = "https://t.me/Ai_advokatrobot"
 
@@ -47,7 +47,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # Водители
+    # Таблица водителей (с ролью, статусом, фио и рейтингом)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS drivers (
             user_id INTEGER PRIMARY KEY,
@@ -65,7 +65,7 @@ def init_db():
     """)
     cursor.execute("CREATE TABLE IF NOT EXISTS clients (user_id INTEGER PRIMARY KEY)")
     
-    # История заказов (добавлен столбец rating)
+    # История заказов
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS order_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,7 +77,7 @@ def init_db():
         )
     """)
     
-    # Авто-регистрация ВЛАДЕЛЬЦА
+    # Авто-регистрация ВЛАДЕЛЬЦА (Босса)
     cursor.execute("SELECT 1 FROM drivers WHERE user_id = ?", (OWNER_ID,))
     if not cursor.fetchone():
         cursor.execute(
@@ -85,6 +85,7 @@ def init_db():
             (OWNER_ID, "BOSS_NETWORK", "Владелец Сети", "⚫ ЧЕРНАЯ ВОЛГА (БОСС)", "Сбер: +70000000000", "BOSS")
         )
     else:
+        # Гарантируем права владельца при перезапуске
         cursor.execute("UPDATE drivers SET role='owner', status='active' WHERE user_id=?", (OWNER_ID,))
         
     conn.commit()
@@ -93,16 +94,18 @@ def init_db():
 init_db()
 
 # ==========================================
-# 🛠 ФУНКЦИИ
+# 🛠 ФУНКЦИИ И УТИЛИТЫ
 # ==========================================
 
 def get_all_admins():
+    """Возвращает список ID владельца и всех админов"""
     conn = sqlite3.connect(DB_PATH)
     res = conn.execute("SELECT user_id FROM drivers WHERE role IN ('owner', 'admin') AND status='active'").fetchall()
     conn.close()
     return [r[0] for r in res]
 
 def is_admin(user_id):
+    """Проверка прав админа или владельца"""
     conn = sqlite3.connect(DB_PATH)
     res = conn.execute("SELECT 1 FROM drivers WHERE user_id=? AND role IN ('owner', 'admin') AND status='active'", (user_id,)).fetchone()
     conn.close()
@@ -148,9 +151,10 @@ def log_order(driver_id, service_name, price):
 
 def update_order_rating(order_id, rating, driver_id):
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("UPDATE order_history SET rating = ? WHERE id = ?", (rating, order_id))
     # Обновляем рейтинг водителя
     conn.execute("UPDATE drivers SET rating_sum = rating_sum + ?, rating_count = rating_count + 1 WHERE user_id = ?", (rating, driver_id))
+    # Обновляем запись в истории
+    conn.execute("UPDATE order_history SET rating = ? WHERE id = ?", (rating, order_id))
     conn.commit()
     conn.close()
 
@@ -176,37 +180,47 @@ async def notify_admins(text, markup=None):
         except: pass
 
 # ==========================================
-# 📜 МЕНЮ УСЛУГ
+# 📜 ПОЛНОЕ МЕНЮ УСЛУГ (БЕЗ СОКРАЩЕНИЙ)
 # ==========================================
 CRAZY_SERVICES = {
-    # LEVEL 1
-    "candy": {"cat": 1, "price": 0, "name": "🍬 Конфетка", "desc": "Водитель с серьезным лицом вручает вам элитную конфету."},
-    "nose": {"cat": 1, "price": 300, "name": "👃 Палец в носу", "desc": "Водитель едет с пальцем в носу всю дорогу."},
-    "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Открывает дверь, кланяется, называет 'Сир'."},
-    "joke": {"cat": 1, "price": 50, "name": "🤡 Тупой анекдот", "desc": "Анекдот категории Б. Смеяться желательно."},
-    "silence": {"cat": 1, "price": 150, "name": "🤐 Тишина", "desc": "Музыка выкл, водитель молчит. Режим 'Монах'."},
-    # LEVEL 2
-    "granny": {"cat": 2, "price": 800, "name": "👵 Бабушка", "desc": "Буду бубнить: 'Шапку надень!', 'Наркоманы одни'."},
-    "gopnik": {"cat": 2, "price": 500, "name": "🍺 Пацанчик", "desc": "Рэпчик, 'братишка', решение вопросиков по телефону."},
-    "guide": {"cat": 2, "price": 600, "name": "🗣 Ужасный гид", "desc": "Экскурсия с выдуманными фактами."},
-    "psych": {"cat": 2, "price": 1000, "name": "🧠 Психолог", "desc": "Вы жалуетесь на жизнь, водитель кивает."},
-    # LEVEL 3
-    "spy": {"cat": 3, "price": 2000, "name": "🕵️‍♂️ Шпион", "desc": "Черные очки, паранойя, проверка хвоста, коды."},
-    "karaoke": {"cat": 3, "price": 5000, "name": "🎤 Караоке", "desc": "Орем песни на полную. Фальшиво и душевно."},
-    "dance": {"cat": 3, "price": 15000, "name": "💃 Танцы", "desc": "Водитель танцует макарену на светофоре."},
-    # LEVEL 4
-    "kidnap": {"cat": 4, "price": 30000, "name": "🎭 Похищение", "desc": "Понарошку пакуем в багажник и везем в лес пить чай."},
-    "tarzan": {"cat": 4, "price": 50000, "name": "🦍 Тарзан", "desc": "Крики, удары в грудь, рычание на прохожих."},
-    "burn": {"cat": 4, "price": 1000000, "name": "🔥 Сжечь авто", "desc": "Едем на пустырь и сжигаем машину (реально). Эпик."},
-    # LEVEL 5 (ДЛЯ ДАМ)
-    "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Изысканный комплимент вашим глазам."},
-    "smile": {"cat": 5, "price": 0, "name": "😁 Улыбка", "desc": "Комплимент вашей улыбке (бесплатно)."},
-    "style": {"cat": 5, "price": 0, "name": "👠 Икона стиля", "desc": "Восхищение вашим образом. 'Вы с показа мод?'"},
-    "improv": {"cat": 5, "price": 0, "name": "✨ Импровизация", "desc": "Водитель сам найдет, что в вас похвалить. Эксклюзив."},
-    "propose": {"cat": 5, "price": 1000, "name": "💍 Предложение", "desc": "Вы делаете предложение водителю. ⚠️ При отказе 1000₽ НЕ возвращаются!"}
+    # LEVEL 1: ЛАЙТ
+    "candy": {"cat": 1, "price": 0, "name": "🍬 Конфетка", "desc": "Водитель с максимально серьезным лицом (как на государственных похоронах) вручает вам элитную барбариску. Это знак глубочайшего уважения и начала крепкой дружбы."},
+    "nose": {"cat": 1, "price": 300, "name": "👃 Палец в носу", "desc": "Всю поездку (или до первого поста ГАИ) водитель едет с пальцем в носу. Вы платите за его моральные страдания, потерю авторитета и ваш истерический смех."},
+    "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Водитель выходит, картинно открывает вам дверь, кланяется в пояс и называет вас 'Сир' или 'Миледи'. Чувство превосходства включено в стоимость."},
+    "joke": {"cat": 1, "price": 50, "name": "🤡 Тупой анекдот", "desc": "Анекдот категории 'Б' из золотой коллекции таксиста 90-х. Смеяться не обязательно, но желательно, чтобы не обидеть тонкую творческую натуру водителя."},
+    "silence": {"cat": 1, "price": 150, "name": "🤐 Полная тишина", "desc": "Режим 'Ниндзя'. Музыка выключается, водитель молчит как рыба. Даже если вы спросите дорогу — он ответит языком жестов. Идеально для интровертов."},
+    
+    # LEVEL 2: МЕДИУМ
+    "granny": {"cat": 2, "price": 800, "name": "👵 Бабушка-ворчунья", "desc": "Ролевая игра. Всю дорогу буду бубнить: 'Куда прешь, наркоман?', 'Шапку надень!', 'Вот в наше время такси стоило копейку!'. Полное погружение в детство."},
+    "gopnik": {"cat": 2, "price": 500, "name": "🍺 Четкий пацанчик", "desc": "Едем под пацанский рэп, водитель сидит на корточках (шутка, за рулем), называет вас 'Братишка', лузгает семечки и решает вопросики по телефону."},
+    "guide": {"cat": 2, "price": 600, "name": "🗣 Ужасный гид", "desc": "Водитель проводит экскурсию, на ходу выдумывая факты. 'Вот этот ларек построил Иван Грозный лично'. Чем бредовее факты, тем лучше."},
+    "psych": {"cat": 2, "price": 1000, "name": "🧠 Психолог", "desc": "Вы жалуетесь на жизнь, бывших и начальника. Водитель кивает, говорит 'Угу', вздыхает и дает житейские советы уровня Ошо."},
+    
+    # LEVEL 3: ХАРД
+    "spy": {"cat": 3, "price": 2000, "name": "🕵️‍♂️ Шпион 007", "desc": "Черные очки, паранойя. Водитель постоянно проверяет 'хвост', говорит по рации кодами ('Орел в гнезде') и прячет лицо от камер."},
+    "karaoke": {"cat": 3, "price": 5000, "name": "🎤 Адское Караоке", "desc": "Врубаем 'Рюмку водки' или 'Знаешь ли ты' на полную! Водитель орет песни вместе с вами. Фальшиво, громко, но очень душевно."},
+    "dance": {"cat": 3, "price": 15000, "name": "💃 Танцы на капоте", "desc": "На красном свете водитель выбегает из машины и танцует макарену или лезгинку перед капотом. Прохожие снимают, вам стыдно, всем весело!"},
+    
+    # LEVEL 4: VIP
+    "kidnap": {"cat": 4, "price": 30000, "name": "🎭 Дружеское похищение", "desc": "Вас (понарошку, но реалистично) грузят в багажник (или на заднее), надевают мешок на голову и везут в лес... пить элитный чай с баранками."},
+    "tarzan": {"cat": 4, "price": 50000, "name": "🦍 Тарзан-Шоу", "desc": "Водитель бьет себя в грудь, издает гортанные звуки, рычит на прохожих и называет другие машины 'железными буйволами'. Санитары уже выехали."},
+    "burn": {"cat": 4, "price": 1000000, "name": "🔥 Сжечь машину", "desc": "Финальный аккорд. Едем на пустырь. Вы платите миллион, я даю канистру. Гори оно всё синим пламенем. (Машина реальная, шоу реальное)."},
+    
+    # LEVEL 5: ДЛЯ ДАМ
+    "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Водитель сделает изысканный, поэтичный комплимент вашим глазам. Возможно, сравнит их с звездами или фарами ксенона."},
+    "smile": {"cat": 5, "price": 0, "name": "😁 Улыбка Джоконды", "desc": "Водитель скажет, что ваша улыбка освещает этот старый, пыльный салон лучше, чем аварийка в ночи."},
+    "style": {"cat": 5, "price": 0, "name": "👠 Икона стиля", "desc": "Восхищение вашим образом. Водитель поинтересуется, не едете ли вы случайно с показа мод в Париже."},
+    "improv": {"cat": 5, "price": 0, "name": "✨ Импровизация", "desc": "Водитель сам найдет, что в вас похвалить. Рискованно, но приятно. Полный фристайл и галантность."},
+    "propose": {"cat": 5, "price": 1000, "name": "💍 Сделать предложение", "desc": "Вы делаете предложение руки, сердца или ипотеки водителю. Шанс 50/50. ⚠️ ВНИМАНИЕ: В случае отказа 1000₽ НЕ ВОЗВРАЩАЮТСЯ!"}
 }
 
-CATEGORIES = {1: "🟢 ЛАЙТ (До 300₽)", 2: "🟡 МЕДИУМ (Ролевые)", 3: "🔴 ХАРД (Треш)", 4: "☠️ VIP БЕЗУМИЕ", 5: "🌹 ДЛЯ ДАМ"}
+CATEGORIES = {
+    1: "🟢 ЛАЙТ (До 300₽)",
+    2: "🟡 МЕДИУМ (Ролевые)",
+    3: "🔴 ХАРД (Треш)",
+    4: "☠️ VIP БЕЗУМИЕ",
+    5: "🌹 ДЛЯ ДАМ (Бесплатно/Риск)"
+}
 
 # ==========================================
 # 🛠 FSM STATES
@@ -239,6 +253,7 @@ class DriverVipRegistration(StatesGroup):
     waiting_for_car = State()
     waiting_for_payment_info = State()
     waiting_for_code = State()
+    waiting_for_role = State() # Чтобы запомнить роль админ/водитель
 
 class DriverChangeCode(StatesGroup):
     waiting_for_new_code = State()
@@ -274,12 +289,12 @@ tos_kb = InlineKeyboardMarkup(inline_keyboard=[
 async def cmd_start(message: types.Message):
     await message.answer(
         "⚠️ <b>CRAZY TAXI: ЗОНА ПОВЫШЕННОГО РИСКА</b>\n\n"
-        "Мы не возим скучных людей. Мы делаем шоу.\n\n"
+        "Мы не возим скучных людей. Мы продаем эмоции.\n\n"
         "<b>Правила клуба:</b>\n"
         "1. Что происходит в такси — остается в такси.\n"
-        "2. Водитель — художник, салон — его холст.\n"
-        "3. Наш адвокат уже выиграл суд у здравого смысла.\n\n"
-        "Готов рискнуть?", reply_markup=tos_kb
+        "2. Водитель — непризнанный гений, салон — его холст.\n"
+        "3. Наш юрист уже выиграл суд у здравого смысла.\n\n"
+        "Готовы рискнуть?", reply_markup=tos_kb
     )
 
 @dp.callback_query(F.data == "accept_tos")
@@ -289,7 +304,7 @@ async def tos_accepted(callback: types.CallbackQuery):
     conn.commit()
     conn.close()
     await callback.message.edit_text("🔥 <b>КОНТРАКТ ПОДПИСАН!</b>")
-    await callback.message.answer("Добро пожаловать в семью. Выбирай ниже 👇", reply_markup=main_kb)
+    await callback.message.answer("Добро пожаловать в семью. Выбирай свою судьбу ниже 👇", reply_markup=main_kb)
 
 @dp.callback_query(F.data == "decline_tos")
 async def tos_declined(callback: types.CallbackQuery):
@@ -323,11 +338,7 @@ async def update_admins_monitor(client_id, taking_driver_id):
     
     taker_role = "👑 БОСС" if taking_driver_id == OWNER_ID else ("👮‍♂️ АДМИН" if is_admin(taking_driver_id) else "🚕 ВОДИТЕЛЬ")
     
-    text = (
-        f"🚫 <b>ЗАКАЗ ЗАБРАЛ: {taker_role} {drv_name}</b>\n"
-        f"ФИО: {fio}\nАвто: {drv_info[1]}\n\n"
-        f"{order.get('broadcasting_text','')}"
-    )
+    text = f"🚫 <b>ЗАКАЗ ЗАБРАЛ: {taker_role} {drv_name}</b>\nФИО: {fio}\nАвто: {drv_info[1]}\n\n{order.get('broadcasting_text','')}"
     
     for admin_id, msg_id in order['admin_msg_ids'].items():
         try: await bot.edit_message_text(chat_id=admin_id, message_id=msg_id, text=text, reply_markup=None)
@@ -338,6 +349,7 @@ async def broadcast_order_to_drivers(client_id, order_text, driver_kb, admin_kb)
     admin_msg_map = {}
     admin_text = f"🚨 <b>МОНИТОРИНГ (ВСЕ АДМИНЫ)</b>\n\n{order_text}"
     
+    # 1. Админам
     for admin_id in admins:
         try:
             msg = await bot.send_message(admin_id, admin_text, reply_markup=admin_kb)
@@ -348,6 +360,7 @@ async def broadcast_order_to_drivers(client_id, order_text, driver_kb, admin_kb)
         active_orders[client_id]['admin_msg_ids'] = admin_msg_map
         active_orders[client_id]['broadcasting_text'] = order_text
 
+    # 2. Водителям
     search_msg = await bot.send_message(client_id, "📡 <i>Ищем водителей...</i>")
     await asyncio.sleep(1.5)
     
@@ -480,7 +493,6 @@ async def stop_ok(c: types.CallbackQuery):
         new_price = old_price + extra
         order['price'] = str(new_price)
         await bot.send_message(cid, f"✅ <b>Водитель согласился!</b>\nНовая цена поездки: <b>{new_price}₽</b>")
-        # Обновляем сообщение у водителя
         drv_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🏁 ЗАВЕРШИТЬ ПОЕЗДКУ", callback_data=f"ask_finish_{cid}")]])
         await c.message.edit_text(f"✅ <b>Точка добавлена!</b>\n💰 Итоговая цена: <b>{new_price}₽</b>", reply_markup=drv_kb)
 
@@ -494,7 +506,6 @@ async def stop_no(c: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("ask_finish_"))
 async def ask_finish(c: types.CallbackQuery):
     cid = int(c.data.split("_")[2])
-    # Спрашиваем клиента о рейтинге
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⭐ 1", callback_data=f"rate_{cid}_1"), InlineKeyboardButton(text="⭐ 2", callback_data=f"rate_{cid}_2"), InlineKeyboardButton(text="⭐ 3", callback_data=f"rate_{cid}_3")],
         [InlineKeyboardButton(text="⭐ 4", callback_data=f"rate_{cid}_4"), InlineKeyboardButton(text="⭐ 5", callback_data=f"rate_{cid}_5")],
@@ -518,27 +529,17 @@ async def rate_ride(c: types.CallbackQuery):
     pr = extract_price(order['price'])
     srv_name = order.get('service', {}).get('name', 'Такси')
     
-    # Сохраняем в историю и обновляем рейтинг
-    log_order(did, srv_name, pr) # Сначала базовое сохранение
-    # Тут можно добавить логику обновления рейтинга в DB, я добавлю её в `log_order` или отдельно
-    conn = sqlite3.connect(DB_PATH)
+    last_id = log_order(did, srv_name, pr)
     if rating > 0:
-        conn.execute("UPDATE drivers SET rating_sum = rating_sum + ?, rating_count = rating_count + 1 WHERE user_id = ?", (rating, did))
-        # Обновим последнюю запись в order_history с рейтингом (упрощенно)
-        last_id = conn.execute("SELECT MAX(id) FROM order_history WHERE driver_id=?", (did,)).fetchone()[0]
-        conn.execute("UPDATE order_history SET rating = ? WHERE id = ?", (rating, last_id))
-    conn.commit()
-    conn.close()
+        update_order_rating(last_id, rating, did)
     
     add_commission(did, pr)
-    
     await c.message.edit_text("🙏 <b>Спасибо за оценку!</b>")
     await bot.send_message(did, f"🎉 <b>Клиент поставил вам {rating}⭐!</b>\nБаланс обновлен.")
-    
     if cid in active_orders: del active_orders[cid]
 
 # ==========================================
-# 📜 CRAZY МЕНЮ (ЛОГИКА ОСТАЕТСЯ, ДОБАВЛЯЮ КЛЮЧЕВОЙ FIX)
+# 📜 CRAZY МЕНЮ (ПОЛНЫЙ ФУНКЦИОНАЛ)
 # ==========================================
 @dp.message(F.text == "📜 CRAZY МЕНЮ (Категории)")
 async def show_cats(message: types.Message):
@@ -574,7 +575,7 @@ async def sel_srv(c: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("do_order_"))
 async def do_order(c: types.CallbackQuery):
-    key = c.data.split("_")[-1] # FIX: Берем последний элемент
+    key = c.data.split("_")[-1] # FIX: Берем последний элемент (ключ)
     srv = CRAZY_SERVICES[key]
     cid, did = c.from_user.id, client_driver_link.get(c.from_user.id)
     
@@ -595,7 +596,7 @@ async def drv_acc_crazy(c: types.CallbackQuery):
     await c.message.edit_text("✅ В работе.")
 
 # ==========================================
-# 🪪 КАБИНЕТ (С НОВЫМИ ДАННЫМИ)
+# 🪪 КАБИНЕТ (С ИСТОРИЕЙ)
 # ==========================================
 @dp.message(Command("cab"))
 async def cab(m: types.Message):
@@ -605,19 +606,16 @@ async def cab(m: types.Message):
         return
         
     conn = sqlite3.connect(DB_PATH)
-    # Получаем историю (последние 5)
     history = conn.execute("SELECT service_name, price, rating, date FROM order_history WHERE driver_id=? ORDER BY id DESC LIMIT 5", (m.from_user.id,)).fetchall()
+    conn.close()
     
-    # Активный заказ
     active_txt = "Нет активных"
     for o in active_orders.values():
         if o.get('driver_id') == m.from_user.id and o['status'] == 'accepted':
             active_txt = f"🚖 {o.get('service', {}).get('name', 'Такси')} | {o['price']}₽"
     
-    # Рейтинг
     rating_val = round(info[8] / info[9], 1) if info[9] > 0 else 0.0
     
-    # Формируем историю
     hist_txt = ""
     for h in history:
         r_star = "⭐" * h[2] if h[2] else "-"
@@ -642,27 +640,31 @@ async def cab(m: types.Message):
     await m.answer(text, reply_markup=kb)
 
 # ==========================================
-# 🔥 VIP РЕГИСТРАЦИЯ
+# 🔥 VIP РЕГИСТРАЦИЯ (2 КЛЮЧА)
 # ==========================================
 @dp.message(Command("vip"))
 async def vip_reg(m: types.Message, s: FSMContext):
     try:
         key = m.text.split()[1]
         role = "driver"
-        if key == KEY_VIP_ADMIN: role = "admin"
-        elif key != KEY_VIP_DRIVER: 
+        
+        if key == KEY_VIP_ADMIN:
+            role = "admin"
+            await m.answer("🔑 <b>КЛЮЧ АДМИНА ПРИНЯТ!</b>\n\nВведите ФИО:")
+        elif key == KEY_VIP_DRIVER:
+            await m.answer("🔑 <b>КЛЮЧ ВОДИТЕЛЯ ПРИНЯТ!</b>\n\nВведите ФИО:")
+        else:
             await m.answer("❌ Неверный ключ.")
             return
-        
+            
         await s.update_data(role=role)
-        await m.answer(f"🔑 <b>КЛЮЧ {role.upper()} ПРИНЯТ!</b>\nВведите ФИО:")
         await s.set_state(DriverVipRegistration.waiting_for_fio)
     except: await m.answer("Формат: /vip КОД")
 
 @dp.message(DriverVipRegistration.waiting_for_fio)
 async def vip_fio(m: types.Message, s: FSMContext):
     await s.update_data(fio=m.text)
-    await m.answer("🚘 Авто:")
+    await m.answer("🚘 Авто (Марка, Номер):")
     await s.set_state(DriverVipRegistration.waiting_for_car)
 
 @dp.message(DriverVipRegistration.waiting_for_car)
@@ -674,19 +676,21 @@ async def vip_car(m: types.Message, s: FSMContext):
 @dp.message(DriverVipRegistration.waiting_for_payment_info)
 async def vip_pay(m: types.Message, s: FSMContext):
     await s.update_data(pay=m.text)
-    await m.answer("🔑 Код:")
+    await m.answer("🔑 Код-пароль:")
     await s.set_state(DriverVipRegistration.waiting_for_code)
 
 @dp.message(DriverVipRegistration.waiting_for_code)
 async def vip_fin(m: types.Message, s: FSMContext):
     code = m.text.upper().strip()
     data = await s.get_data()
+    role = data['role'] # Извлекаем роль
     conn = sqlite3.connect(DB_PATH)
     try:
         conn.execute("INSERT INTO drivers (user_id, username, fio, car_info, payment_info, access_code, status, role) VALUES (?, ?, ?, ?, ?, ?, 'active', ?)", 
-                     (m.from_user.id, m.from_user.username, data['fio'], data['car'], data['pay'], code, data['role']))
+                     (m.from_user.id, m.from_user.username, data['fio'], data['car'], data['pay'], code, role))
         conn.commit()
-        await m.answer(f"🚀 <b>ВЫ ПРИНЯТЫ!</b>\nРоль: {data['role']}. Жмите /cab")
+        await m.answer(f"🚀 <b>ВЫ ПРИНЯТЫ КАК {role.upper()}!</b>\nСтатус: ACTIVE. Жмите /cab")
+        await notify_admins(f"⭐ <b>VIP РЕГИСТРАЦИЯ ({role.upper()})</b>\n@{m.from_user.username}")
     except: await m.answer("❌ Код занят.")
     finally: conn.close()
     await s.clear()
@@ -732,13 +736,13 @@ async def reg_fin(m: types.Message, s: FSMContext):
         conn.commit()
         await m.answer("📝 Заявка отправлена.")
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ОДОБРИТЬ", callback_data=f"adm_app_{m.from_user.id}")]])
-        await notify_admins(f"🚨 <b>НОВЫЙ</b>\n{data['fio']}\n{data['car']}", kb)
+        await notify_admins(f"🚨 <b>НОВЫЙ ВОДИТЕЛЬ</b>\n{data['fio']}", kb)
     except: await m.answer("❌ Код занят.")
     finally: conn.close()
     await s.clear()
 
 # ==========================================
-# 🚕 ТОРГ И ОСТАЛЬНОЕ (ДУБЛИРУЮ ВАЖНЫЕ ЧАСТИ ИЗ ПРЕДЫДУЩИХ ВЕРСИЙ, ЧТОБЫ КОД БЫЛ ЦЕЛЬНЫМ)
+# 🚕 ТОРГ И ОСТАЛЬНОЕ
 # ==========================================
 @dp.callback_query(F.data.startswith("cnt_"))
 async def cnt_start(c: types.CallbackQuery, s: FSMContext):
@@ -766,11 +770,9 @@ async def ok_off(c: types.CallbackQuery):
     client_driver_link[cid] = did
     
     info = get_driver_info(did)
-    # Кнопка для водителя (сразу с завершением)
     drv_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🏁 ЗАВЕРШИТЬ", callback_data=f"ask_finish_{cid}")]])
     await bot.send_message(did, f"✅ Клиент согласен!\n📞 {active_orders[cid]['phone']}", reply_markup=drv_kb)
     
-    # Кнопка для клиента (добавить точку)
     cli_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➕ ДОБАВИТЬ ТОЧКУ", callback_data="add_stop")]])
     await c.message.edit_text(f"🚕 <b>Едет: {info[7]}</b>\n🔐 {info[5]}", reply_markup=cli_kb)
 
@@ -804,6 +806,13 @@ async def admin_approve(c: types.CallbackQuery):
     await c.message.edit_text("✅ Одобрено.")
     try: await bot.send_message(did, "🎉 Принят! /cab")
     except: pass
+
+@dp.callback_query(F.data == "cab_pay")
+async def cab_pay(c: types.CallbackQuery):
+    info = get_driver_info(c.from_user.id)
+    boss = get_driver_info(OWNER_ID)
+    await c.message.answer(f"💸 Долг: <b>{info[3]}₽</b>\nПереведи Боссу: <b>{boss[2]}</b>")
+    await c.answer()
 
 @dp.message(F.text == "🔐 Ввести КЛЮЧ услуги")
 async def key_start(m: types.Message, s: FSMContext):
