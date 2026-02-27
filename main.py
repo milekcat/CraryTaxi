@@ -20,13 +20,26 @@ if not API_TOKEN or not DRIVER_ID:
 
 DRIVER_ID = int(DRIVER_ID)
 
-# Инициализация бота для новых версий aiogram (3.7.0+)
+# Инициализация бота
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 # Временные БД в памяти
-accepted_users = set() # Те, кто принял условия
+accepted_users = set()
 active_orders = {}
+
+# --- БАЗА CRAZY-УСЛУГ ---
+CRAZY_SERVICES = {
+    "sleep": {"name": "🛌 Сон под шепот ям", "price": 150, "desc": "Аккуратная езда, расслабляющая музыка, водитель молчит как рыба."},
+    "tale": {"name": "📖 Сказка на ночь", "price": 300, "desc": "Водитель расскажет захватывающую, возможно выдуманную, историю из жизни таксиста."},
+    "granny": {"name": "👵 Бабушка-ворчунья", "price": 800, "desc": "Всю дорогу буду бубнить, как ты плохо одет, почему без шапки и что 'в наше время было лучше'."},
+    "spy": {"name": "🕵️‍♂️ Шпионская слежка", "price": 2000, "desc": "Едем за 'той машиной'. Водитель надевает черные очки, говорит по рации и нагнетает паранойю."},
+    "karaoke": {"name": "🎤 Караоке-баттл", "price": 5000, "desc": "Поем во весь голос хиты 90-х. Светомузыка в салоне, водитель подпевает и жутко фальшивит."},
+    "dance": {"name": "🕺 Танцы на светофоре", "price": 15000, "desc": "Красный свет? Я выхожу из машины и танцую безумный танец перед всеми участниками движения!"},
+    "kidnap": {"name": "🎭 Дружеское похищение", "price": 30000, "desc": "Тебя 'жестко' пакуют в авто (по сценарию) и везут пить чай с баранками на природу."},
+    "tarzan": {"name": "🦍 Тарзан-шоу", "price": 50000, "desc": "Перформанс с раздеванием, криками и биением себя в грудь. Максимальный кринж гарантирован!"},
+    "burn": {"name": "🔥 Сжечь машину", "price": 1000000, "desc": "Приезжаем на пустырь, ты даешь лям, я даю канистру с бензином. Гори оно всё огнем."}
+}
 
 # --- СОСТОЯНИЯ FSM ---
 class OrderRide(StatesGroup):
@@ -52,39 +65,38 @@ main_kb = ReplyKeyboardMarkup(
 )
 
 tos_kb = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="✅ Я ПРИНИМАЮ ВСЕ РИСКИ", callback_data="accept_tos")],
+    [InlineKeyboardButton(text="✅ ПОДПИСАТЬ КОНТРАКТ", callback_data="accept_tos")],
     [InlineKeyboardButton(text="❌ Я боюсь, пойду пешком", callback_data="decline_tos")]
 ])
 
 # ==========================================
-# 🛑 СТАРТ И ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ
+# 🛑 СТАРТ И ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ (НОВЫЙ ЛОР)
 # ==========================================
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     disclaimer_text = (
-        "⚠️ <b>ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ</b> ⚠️\n\n"
+        "⚠️ <b>ОФИЦИАЛЬНОЕ ПРЕДУПРЕЖДЕНИЕ</b> ⚠️\n\n"
         "ВНИМАНИЕ! Вы пытаетесь воспользоваться услугами <b>Crazy Taxi</b>.\n"
-        "Данный автомобиль является зоной действия <b>Арт-перформанса</b>.\n\n"
-        "<b>Нажимая «Принять», вы соглашаетесь с тем, что:</b>\n"
-        "1. Водитель может оказаться безумцем в гавайской рубашке.\n"
-        "2. Ваша поездка может превратиться в шоу, концерт или психологический триллер.\n"
-        "3. Вы добровольно отказываетесь от претензий на моральный ущерб, если водитель начнет петь колыбельные или танцевать на светофоре.\n"
-        "4. Законы логики внутри салона могут не работать.\n\n"
-        "<i>Готов шагнуть в хаос?</i>"
+        "Салон этого автомобиля является юридически неприкосновенной зоной <b>Арт-перформанса</b>.\n\n"
+        "<b>Нажимая «Подписать контракт», вы соглашаетесь с тем, что:</b>\n"
+        "1. Любая дичь, происходящая внутри, классифицируется как 'современное искусство'.\n"
+        "2. Вы заранее отказываетесь от любых судебных исков и претензий на моральный ущерб.\n"
+        "3. Наш адвокат слишком хорош — он однажды выиграл дело у здравого смысла. Судиться с нами бесполезно.\n"
+        "4. Ваша поездка может внезапно стать стендапом, триллером или мюзиклом.\n\n"
+        "<i>Готов шагнуть в зону абсолютной юридической анархии?</i>"
     )
     await message.answer(disclaimer_text, reply_markup=tos_kb)
 
 @dp.callback_query(F.data == "accept_tos")
 async def tos_accepted(callback: types.CallbackQuery):
     accepted_users.add(callback.from_user.id)
-    await callback.message.edit_text("🔥 <b>ДОБРО ПОЖАЛОВАТЬ В CRAZY TAXI!</b> 🔥\nВы официально стали участником перформанса.")
+    await callback.message.edit_text("🔥 <b>ДОБРО ПОЖАЛОВАТЬ В CRAZY TAXI!</b> 🔥\nКонтракт подписан кровью (шутка, цифровой подписью).")
     await callback.message.answer("Выбирай действие в меню ниже 👇", reply_markup=main_kb)
 
 @dp.callback_query(F.data == "decline_tos")
 async def tos_declined(callback: types.CallbackQuery):
-    await callback.message.edit_text("🚶‍♂️ Очень жаль! Но безопасность превыше всего. Удачной пешей прогулки!")
+    await callback.message.edit_text("🚶‍♂️ Очень жаль! Законы улиц суровы, но безопасны. Удачной пешей прогулки!")
 
-# Проверка, принял ли пользователь правила
 async def check_tos(message: types.Message) -> bool:
     if message.from_user.id not in accepted_users:
         await message.answer("Сначала нужно принять правила! Нажми /start")
@@ -92,20 +104,20 @@ async def check_tos(message: types.Message) -> bool:
     return True
 
 # ==========================================
-# ⚖️ ЮРИДИЧЕСКИЙ РАЗДЕЛ И АДВОКАТ
+# ⚖️ ЮРИДИЧЕСКИЙ РАЗДЕЛ И АДВОКАТ (НОВЫЙ ЛОР)
 # ==========================================
 @dp.message(F.text == "⚖️ Вызвать адвоката / Правила")
 async def lawyer_menu(message: types.Message):
     if not await check_tos(message): return
     
     lawyer_text = (
-        "⚖️ <b>ЮРИДИЧЕСКИЙ ХАЙП И ЗАЩИТА</b> ⚖️\n\n"
-        "Спокойно! Если перформанс зашел слишком далеко, у нас есть связи.\n\n"
-        "<b>Правила салона:</b>\n"
-        "• Клиент всегда прав, пока водитель не решит иначе.\n"
-        "• Чаевые снижают градус безумия на 15%.\n"
-        "• Попытка покинуть движущееся авто расценивается как слабость.\n\n"
-        "<i>Нужен адвокат, чтобы вытащить тебя из багажника? Жми кнопку!</i>"
+        "⚖️ <b>НАШ НЕПОБЕДИМЫЙ АДВОКАТ</b> ⚖️\n\n"
+        "Думаешь, что-то вышло из-под контроля? Хочешь пожаловаться?\n\n"
+        "<b>Ознакомься с прецедентами:</b>\n"
+        "• Наш юрист доказал в суде, что красный свет светофора — это 'субъективное восприятие цвета'.\n"
+        "• Любой твой испуганный крик в салоне по договору классифицируется как 'активное участие в интерактиве'.\n"
+        "• Читать права здесь будет только он, и то на латыни.\n\n"
+        "<i>Все еще хочешь с ним связаться? Жми кнопку, если не боишься встречного иска за отрыв от важных дел!</i>"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚨 СВЯЗАТЬСЯ С АДВОКАТОМ 🚨", callback_data="call_lawyer")]
@@ -114,53 +126,111 @@ async def lawyer_menu(message: types.Message):
 
 @dp.callback_query(F.data == "call_lawyer")
 async def alert_lawyer(callback: types.CallbackQuery):
-    await callback.answer("🚨 Адвокат уже выехал... шучу, он в отпуске. Договаривайся с водителем!", show_alert=True)
-    await bot.send_message(chat_id=DRIVER_ID, text=f"⚖️ Клиент @{callback.from_user.username} пытается вызвать адвоката! Кажется, ты переборщил.")
+    await callback.answer("🚨 Адвокат уже выехал... шучу, он занят подачей иска на твою скуку. Договаривайся с водителем!", show_alert=True)
+    await bot.send_message(chat_id=DRIVER_ID, text=f"⚖️ Клиент @{callback.from_user.username} пытается вызвать адвоката! Скажи ему, что наш юрист сегодня берет отгул.")
 
 # ==========================================
-# 📜 РАСШИРЕННОЕ ХАОС-МЕНЮ
+# 📜 РАСШИРЕННОЕ ХАОС-МЕНЮ (ПОЛНЫЙ ЦИКЛ ПРОДАЖ)
 # ==========================================
 @dp.message(F.text == "📜 CRAZY ХАОС-МЕНЮ")
-async def crazy_menu(message: types.Message):
+async def show_crazy_menu(message: types.Message):
     if not await check_tos(message): return
     
+    buttons = []
+    for key, data in CRAZY_SERVICES.items():
+        buttons.append([InlineKeyboardButton(text=f"{data['name']} - {data['price']}₽", callback_data=f"csel_{key}")])
+        
+    ikb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await message.answer("🔥 <b>CRAZY DRIVER'S CHAOS MENU</b> 🔥\n\n<i>Выбирай свое приключение на сегодня:</i>", reply_markup=ikb)
+
+@dp.callback_query(F.data.startswith("csel_"))
+async def process_crazy_selection(callback: types.CallbackQuery):
+    service_key = callback.data.split("_")[1]
+    service = CRAZY_SERVICES[service_key]
+    client_id = callback.from_user.id
+    
+    active_orders[client_id] = {"type": "crazy", "service_key": service_key}
+    
     text = (
-        "🔥 <b>CRAZY DRIVER'S CHAOS MENU</b> 🔥\n"
-        "<i>Выбирай свое приключение на сегодня:</i>\n\n"
-        "🛌 <b>Сон под шепот ям (150₽)</b> - Аккуратная езда, расслабляющая музыка, водитель молчит.\n"
-        "📖 <b>Сказка на ночь (300₽)</b> - Водитель расскажет захватывающую историю из жизни таксиста.\n"
-        "👵 <b>Бабушка-ворчунья (800₽)</b> - Всю дорогу буду бубнить, как ты плохо одет и что 'в наше время было лучше'.\n"
-        "🕺 <b>Танцы на светофоре (15 000₽)</b> - Красный свет? Я выхожу из машины и танцую макарену!\n"
-        "🦍 <b>Тарзан-шоу (50 000₽)</b> - Перформанс с раздеванием, криками и биением себя в грудь.\n"
-        "🔥 <b>Сжечь машину (1 000 000₽)</b> - Приезжаем на пустырь, ты даешь лям, я даю канистру с бензином. Конец.\n"
+        f"🎪 <b>ВЫБРАНА УСЛУГА:</b> {service['name']}\n\n"
+        f"📝 <b>Описание:</b> {service['desc']}\n\n"
+        f"💰 <b>Стоимость:</b> {service['price']}₽\n\n"
+        f"💳 <b>Реквизиты для оплаты:</b>\n"
+        f"Яндекс Банк: <code>+79012723729</code> (Андрей Игоревич)\n\n"
+        f"⚠️ <i>Услуга будет активирована только после перевода.</i>"
     )
     
-    ikb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🛌 Сон (150₽)", callback_data="crazy_sleep"), InlineKeyboardButton(text="📖 Сказка (300₽)", callback_data="crazy_tale")],
-        [InlineKeyboardButton(text="👵 Бабушка (800₽)", callback_data="crazy_granny"), InlineKeyboardButton(text="🕺 Танцы (15к₽)", callback_data="crazy_dance")],
-        [InlineKeyboardButton(text="🦍 Тарзан (50к₽)", callback_data="crazy_tarzan"), InlineKeyboardButton(text="🔥 Сжечь авто (1млн₽)", callback_data="crazy_burn")]
+    pay_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💸 Я ОПЛАТИЛ УСЛУГУ", callback_data="cpay_done")],
+        [InlineKeyboardButton(text="❌ Передумал", callback_data="cpay_cancel")]
     ])
-    await message.answer(text, reply_markup=ikb)
+    
+    await callback.message.edit_text(text, reply_markup=pay_kb)
 
-@dp.callback_query(F.data.startswith("crazy_"))
-async def process_crazy_order(callback: types.CallbackQuery):
-    service = callback.data.split("_")[1]
+@dp.callback_query(F.data == "cpay_cancel")
+async def cancel_crazy_payment(callback: types.CallbackQuery):
+    client_id = callback.from_user.id
+    if client_id in active_orders: del active_orders[client_id]
+    await callback.message.edit_text("❌ Заказ отменен. Наш адвокат одобряет твое благоразумие!")
+
+@dp.callback_query(F.data == "cpay_done")
+async def crazy_payment_done(callback: types.CallbackQuery):
     client_id = callback.from_user.id
     username = callback.from_user.username or "Без юзернейма"
+    order = active_orders.get(client_id)
     
-    services_dict = {
-        "sleep": "Сон под шепот ям", "tale": "Сказка на ночь", "granny": "Бабушка-ворчунья",
-        "dance": "Танцы на светофоре", "tarzan": "Тарзан-шоу", "burn": "Сжечь машину"
-    }
+    if not order or order.get("type") != "crazy":
+        await callback.answer("Заказ не найден. Начни заново.", show_alert=True)
+        return
+
+    service_key = order["service_key"]
+    service = CRAZY_SERVICES[service_key]
     
-    service_name = services_dict.get(service, "Неизвестная дичь")
+    await callback.message.edit_text("⏳ <b>Уведомление отправлено водителю.</b>\nОжидаем подтверждения поступления средств и старта шоу...")
     
-    await callback.message.answer(f"✅ Заказ на <b>«{service_name}»</b> улетел водителю! Готовься.")
-    await bot.send_message(
-        chat_id=DRIVER_ID,
-        text=f"🎭 <b>ВНИМАНИЕ! ЗАКАЗ ИЗ ХАОС-МЕНЮ!</b> 🎭\n\n👤 Клиент: @{username}\n🎪 Выбрал: <b>{service_name}</b>\n\nСвяжись с ним для уточнения деталей!"
+    driver_text = (
+        f"🚨 <b>НОВЫЙ ЗАКАЗ ИЗ ХАОС-МЕНЮ (ОПЛАЧЕН?)</b> 🚨\n\n"
+        f"👤 Клиент: @{username}\n"
+        f"🎪 Услуга: <b>{service['name']}</b>\n"
+        f"💰 Ожидаемая сумма: <b>{service['price']}₽</b>\n\n"
+        f"<i>Клиент нажал кнопку «Оплатил». Проверь Яндекс Банк:</i>"
     )
-    await callback.answer()
+    
+    driver_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Деньги пришли, ВЫПОЛНЯЮ!", callback_data=f"cdrv_ok_{client_id}")],
+        [InlineKeyboardButton(text="❌ Оплата НЕ получена", callback_data=f"cdrv_nopay_{client_id}")],
+        [InlineKeyboardButton(text="↩️ Отказаться и ВЕРНУТЬ деньги", callback_data=f"cdrv_refund_{client_id}")]
+    ])
+    
+    await bot.send_message(chat_id=DRIVER_ID, text=driver_text, reply_markup=driver_kb)
+
+# --- ПУЛЬТ ВОДИТЕЛЯ (CRAZY-МЕНЮ) ---
+@dp.callback_query(F.data.startswith("cdrv_ok_"))
+async def cdrv_ok(callback: types.CallbackQuery):
+    client_id = int(callback.data.split("_")[2])
+    order = active_orders.get(client_id)
+    service_name = CRAZY_SERVICES[order["service_key"]]["name"] if order else "Услуга"
+    
+    await callback.message.edit_text(f"✅ Ты подтвердил оплату и взял в работу: {service_name}")
+    try:
+        await bot.send_message(chat_id=client_id, text=f"🎉 <b>ОПЛАТА ПОЛУЧЕНА!</b>\n\nВодитель подтвердил перевод. Услуга <b>«{service_name}»</b> активирована. Приготовься к шоу!")
+    except: pass
+
+@dp.callback_query(F.data.startswith("cdrv_nopay_"))
+async def cdrv_nopay(callback: types.CallbackQuery):
+    client_id = int(callback.data.split("_")[2])
+    await callback.message.edit_text("❌ Ты отметил, что оплата не поступила.")
+    try:
+        await bot.send_message(chat_id=client_id, text="🛑 <b>ВНИМАНИЕ!</b>\nВодитель сообщает, что оплата <b>не поступила</b> на счет Яндекс Банка. Проверь статус перевода или свяжись с водителем.")
+    except: pass
+
+@dp.callback_query(F.data.startswith("cdrv_refund_"))
+async def cdrv_refund(callback: types.CallbackQuery):
+    client_id = int(callback.data.split("_")[2])
+    await callback.message.edit_text("↩️ Ты отказался от выполнения. Не забудь перевести деньги обратно клиенту!")
+    try:
+        await bot.send_message(chat_id=client_id, text="⚠️ <b>ВОЗВРАТ СРЕДСТВ</b>\n\nВодитель в данный момент не может выполнить эту услугу. Заказ отменен. \nЕсли вы уже перевели деньги, <b>водитель оформит возврат по вашим реквизитам.</b>")
+    except: pass
 
 # ==========================================
 # 💡 СВОЙ ВАРИАНТ (ИНДИВИДУАЛЬНЫЙ ЗАКАЗ)
@@ -186,7 +256,7 @@ async def process_custom_idea(message: types.Message, state: FSMContext):
     await bot.send_message(chat_id=DRIVER_ID, text=f"💡 <b>НОВАЯ ИДЕЯ ОТ КЛИЕНТА</b> 💡\n\n👤 @{username}\n📝 Суть: {idea}", reply_markup=kb)
 
 # ==========================================
-# 🚕 ОБЫЧНОЕ ТАКСИ (С ТОРГОМ) - ЛОГИКА СОХРАНЕНА
+# 🚕 ОБЫЧНОЕ ТАКСИ (С ТОРГОМ)
 # ==========================================
 @dp.message(F.text == "🚕 Заказать такси (Торг)")
 async def start_ride_order(message: types.Message, state: FSMContext):
@@ -212,6 +282,7 @@ async def process_price(message: types.Message, state: FSMContext):
     client_id = message.from_user.id
     
     active_orders[client_id] = {
+        "type": "taxi",
         "from": user_data['from_address'],
         "to": user_data['to_address'],
         "price": message.text,
@@ -237,7 +308,6 @@ async def process_price(message: types.Message, state: FSMContext):
     )
     await bot.send_message(chat_id=DRIVER_ID, text=driver_text, reply_markup=keyboard)
 
-# --- РЕАКЦИИ ВОДИТЕЛЯ И ОПЛАТА ---
 @dp.callback_query(F.data.startswith("reject_"))
 async def driver_rejects(callback: types.CallbackQuery):
     client_id = int(callback.data.split("_")[1])
@@ -260,7 +330,7 @@ async def driver_accepts(callback: types.CallbackQuery):
         f"🚕 <b>ВОДИТЕЛЬ ПРИНЯЛ ЗАКАЗ!</b>\n\n"
         f"💰 К оплате: <b>{order.get('price', '?')}</b>\n\n"
         f"💳 <b>Реквизиты для перевода:</b>\n"
-        f"Яндекс Банк: <code> +79012723729</code> (Андрей Игоревич)\n\n"
+        f"Яндекс Банк: <code>+79012723729</code> (Андрей Игоревич)\n\n"
         f"Жми кнопку ниже, как переведешь!"
     )
     try: await bot.send_message(chat_id=client_id, text=success_text, reply_markup=pay_keyboard)
@@ -298,7 +368,7 @@ async def send_offer_to_client(message: types.Message, state: FSMContext):
 async def client_rejects(callback: types.CallbackQuery):
     client_id = int(callback.data.split("_")[2])
     await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.message.answer("Вы отказались. Будем ждать снова!")
+    await callback.message.answer("Вы отказались. Наш адвокат закрывает дело.")
     await bot.send_message(chat_id=DRIVER_ID, text=f"❌ Клиент отказался от твоих условий.")
 
 @dp.callback_query(F.data.startswith("client_accept_"))
@@ -311,7 +381,7 @@ async def client_accepts_offer(callback: types.CallbackQuery):
     ])
     
     await callback.message.answer(
-        text=f"🚕 <b>ДОГОВОРИЛИСЬ!</b>\n\n💳 <b>Реквизиты:</b>\nСбер/Тинькофф: <code>+79990000000</code> (Ярослав)\n\nЖми кнопку после перевода!", 
+        text=f"🚕 <b>ДОГОВОРИЛИСЬ!</b>\n\n💳 <b>Реквизиты:</b>\nЯндекс Банк: <code>+79012723729</code> (Андрей Игоревич)\n\nЖми кнопку после перевода!", 
         reply_markup=pay_keyboard
     )
     await bot.send_message(chat_id=DRIVER_ID, text="✅ Клиент согласился на твои условия и переводит деньги!")
@@ -321,7 +391,7 @@ async def payment_notif(callback: types.CallbackQuery):
     username = callback.from_user.username or "Без юзернейма"
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer("✅ Уведомление об оплате отправлено! Водитель заводит мотор 💨")
-    await bot.send_message(chat_id=DRIVER_ID, text=f"💸 <b>ОПЛАТА ПОСТУПИЛА?</b>\nКлиент @{username} нажал 'Оплатил'. Проверь баланс!")
+    await bot.send_message(chat_id=DRIVER_ID, text=f"💸 <b>ОПЛАТА ПОСТУПИЛА?</b>\nКлиент @{username} нажал 'Оплатил'. Проверь баланс Яндекс Банка!")
 
 async def main():
     await dp.start_polling(bot)
