@@ -9,29 +9,28 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.client.default import DefaultBotProperties
-from aiogram.exceptions import TelegramBadRequest
 
 # ==========================================
-# ⚙️ НАСТРОЙКИ
+# ⚙️ НАСТРОЙКИ СИСТЕМЫ
 # ==========================================
 logging.basicConfig(level=logging.INFO)
 
 API_TOKEN = os.getenv("API_TOKEN")
 OWNER_ID = os.getenv("DRIVER_ID") 
 
-# 🔥 УНИВЕРСАЛЬНЫЙ КЛЮЧ ДЛЯ МГНОВЕННОЙ РЕГИСТРАЦИИ ВОДИТЕЛЯ
-# Если юзер введет /vip CRAZY_START - он станет водителем без одобрения
+# 🔥 СЕКРЕТНЫЙ КЛЮЧ ДЛЯ МГНОВЕННОГО НАЙМА
+# Если человек напишет: /vip CRAZY_START - он станет водителем сразу.
 MASTER_INVITE_KEY = "CRAZY_START"
 
 if not API_TOKEN or not OWNER_ID:
-    logging.error("⛔ КРИТИЧЕСКАЯ ОШИБКА: Токены не найдены!")
+    logging.error("⛔ КРИТИЧЕСКАЯ ОШИБКА: Не заполнены переменные API_TOKEN или DRIVER_ID")
     exit()
 
 OWNER_ID = int(OWNER_ID)
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
-# Глобальные переменные
+# Оперативная память
 active_orders = {} 
 client_driver_link = {} 
 
@@ -44,6 +43,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
+    # Таблица водителей
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS drivers (
             user_id INTEGER PRIMARY KEY,
@@ -66,7 +66,7 @@ def init_db():
         )
     """)
     
-    # Авто-регистрация ВЛАДЕЛЬЦА
+    # Авто-создание ВЛАДЕЛЬЦА (БОССА)
     cursor.execute("SELECT 1 FROM drivers WHERE user_id = ?", (OWNER_ID,))
     if not cursor.fetchone():
         cursor.execute(
@@ -74,6 +74,7 @@ def init_db():
             (OWNER_ID, "BOSS_NETWORK", "⚫ ЧЕРНАЯ ВОЛГА (БОСС)", "Яндекс Банк +79012723729", "BOSS")
         )
     else:
+        # Принудительно выдаем права владельцу при перезапуске
         cursor.execute("UPDATE drivers SET role='owner', status='active' WHERE user_id=?", (OWNER_ID,))
         
     conn.commit()
@@ -82,7 +83,7 @@ def init_db():
 init_db()
 
 # ==========================================
-# 🛠 ФУНКЦИИ
+# 🛠 УТИЛИТЫ
 # ==========================================
 
 def get_all_admins():
@@ -157,9 +158,9 @@ async def notify_admins(text, markup=None):
 # ==========================================
 CRAZY_SERVICES = {
     # LEVEL 1
-    "candy": {"cat": 1, "price": 0, "name": "🍬 Конфетка", "desc": "Водитель с серьезным лицом вручает вам элитную конфету."},
+    "candy": {"cat": 1, "price": 0, "name": "🍬 Конфетка", "desc": "Водитель с серьезным лицом вручает вам конфету."},
     "nose": {"cat": 1, "price": 300, "name": "👃 Палец в носу", "desc": "Водитель едет с пальцем в носу. Вы платите за его моральный ущерб."},
-    "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Открывает дверь, кланяется, называет 'Сир' или 'Миледи'."},
+    "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Открывает дверь, кланяется, называет 'Сир'."},
     "joke": {"cat": 1, "price": 50, "name": "🤡 Тупой анекдот", "desc": "Анекдот категории Б. Смеяться желательно."},
     "silence": {"cat": 1, "price": 150, "name": "🤐 Тишина", "desc": "Музыка выкл, водитель молчит. Режим 'Монах'."},
     # LEVEL 2
@@ -176,11 +177,11 @@ CRAZY_SERVICES = {
     "tarzan": {"cat": 4, "price": 50000, "name": "🦍 Тарзан", "desc": "Крики, удары в грудь, рычание на прохожих."},
     "burn": {"cat": 4, "price": 1000000, "name": "🔥 Сжечь авто", "desc": "Едем на пустырь и сжигаем машину. Эпик."},
     # LEVEL 5 (ДЛЯ ДАМ)
-    "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Водитель сделает изысканный комплимент вашим глазам."},
+    "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Изысканный комплимент вашим глазам."},
     "smile": {"cat": 5, "price": 0, "name": "😁 Улыбка", "desc": "Комплимент вашей улыбке (бесплатно)."},
     "style": {"cat": 5, "price": 0, "name": "👠 Икона стиля", "desc": "Восхищение вашим образом. 'Вы с показа мод?'"},
     "improv": {"cat": 5, "price": 0, "name": "✨ Импровизация", "desc": "Водитель сам найдет, что в вас похвалить. Эксклюзив."},
-    "propose": {"cat": 5, "price": 1000, "name": "💍 Сделать предложение", "desc": "Вы делаете предложение водителю (руки/ипотеки). ⚠️ При отказе 1000₽ НЕ возвращаются!"}
+    "propose": {"cat": 5, "price": 1000, "name": "💍 Предложение", "desc": "Вы делаете предложение водителю (руки/ипотеки). ⚠️ При отказе 1000₽ НЕ возвращаются!"}
 }
 
 CATEGORIES = {
@@ -227,7 +228,7 @@ class AdminEditDriver(StatesGroup):
     waiting_for_new_value = State()
 
 # ==========================================
-# ⌨️ UI
+# ⌨️ ГЛАВНОЕ МЕНЮ
 # ==========================================
 main_kb = ReplyKeyboardMarkup(
     keyboard=[
@@ -311,7 +312,7 @@ async def update_admins_monitor(client_id, taking_driver_id):
 async def broadcast_order_to_drivers(client_id, order_text, driver_kb, admin_kb):
     admins = get_all_admins()
     admin_msg_map = {}
-    admin_text = f"🚨 <b>МОНИТОРИНГ</b>\n\n{order_text}"
+    admin_text = f"🚨 <b>МОНИТОРИНГ (ВСЕ АДМИНЫ)</b>\n\n{order_text}"
     
     for admin_id in admins:
         try:
@@ -329,15 +330,16 @@ async def broadcast_order_to_drivers(client_id, order_text, driver_kb, admin_kb)
     all_active = get_active_drivers()
     simple_drivers = [d for d in all_active if d not in admins]
     
-    # Фикс: если никого нет, пишем клиенту, но админы все равно видят заказ
-    if not simple_drivers:
-        await search_msg.edit_text("😔 <b>Водители заняты.</b> Администратор уведомлен.")
-    else:
-        tasks = []
-        for d_id in simple_drivers:
-            tasks.append(bot.send_message(d_id, f"⚡ <b>ЗАКАЗ!</b>\n{order_text}", reply_markup=driver_kb))
-        if tasks: await asyncio.gather(*tasks, return_exceptions=True)
-        await search_msg.edit_text("⏳ <b>Запрос отправлен!</b> Ждем.")
+    if not simple_drivers and not admins:
+        await search_msg.edit_text("😔 <b>Нет свободных машин на линии.</b>")
+        return
+
+    tasks = []
+    for d_id in simple_drivers:
+        tasks.append(bot.send_message(d_id, f"⚡ <b>ЗАКАЗ!</b>\n{order_text}", reply_markup=driver_kb))
+    
+    if tasks: await asyncio.gather(*tasks, return_exceptions=True)
+    await search_msg.edit_text("⏳ <b>Запрос отправлен!</b> Ждем.")
 
 # ==========================================
 # 📜 МЕНЮ (КАТЕГОРИИ)
@@ -348,7 +350,10 @@ async def show_cats(message: types.Message):
     if message.from_user.id not in client_driver_link:
         await message.answer("🔒 <b>ДОСТУП ЗАКРЫТ!</b>\nСядь в машину и введи код водителя.", reply_markup=main_kb)
         return
-    btns = [[InlineKeyboardButton(text=n, callback_data=f"cat_{i}")] for i, n in CATEGORIES.items()]
+    
+    btns = []
+    for cat_id, cat_name in CATEGORIES.items():
+        btns.append([InlineKeyboardButton(text=cat_name, callback_data=f"cat_{cat_id}")])
     await message.answer("🔥 <b>ВЫБЕРИ КАТЕГОРИЮ:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
 
 @dp.callback_query(F.data.startswith("cat_"))
@@ -436,37 +441,37 @@ async def drv_fin(c: types.CallbackQuery):
 # 🚕 ТАКСИ + ТОРГ
 # ==========================================
 @dp.message(F.text == "🚕 Заказать такси (Поиск)")
-async def taxi_start(m: types.Message, s: FSMContext):
-    await m.answer("📍 <b>Откуда?</b>", reply_markup=types.ReplyKeyboardRemove())
-    await s.set_state(OrderRide.waiting_for_from)
+async def taxi_start(message: types.Message, state: FSMContext):
+    await message.answer("📍 <b>Откуда?</b>", reply_markup=types.ReplyKeyboardRemove())
+    await state.set_state(OrderRide.waiting_for_from)
 
 @dp.message(OrderRide.waiting_for_from)
-async def taxi_fr(m: types.Message, s: FSMContext):
-    await s.update_data(fr=m.text)
-    await m.answer("🏁 <b>Куда?</b>")
-    await s.set_state(OrderRide.waiting_for_to)
+async def taxi_fr(message: types.Message, state: FSMContext):
+    await state.update_data(fr=message.text)
+    await message.answer("🏁 <b>Куда?</b>")
+    await state.set_state(OrderRide.waiting_for_to)
 
 @dp.message(OrderRide.waiting_for_to)
-async def taxi_to(m: types.Message, s: FSMContext):
-    await s.update_data(to=m.text)
-    await m.answer("📞 <b>Телефон:</b>")
-    await s.set_state(OrderRide.waiting_for_phone)
+async def taxi_to(message: types.Message, state: FSMContext):
+    await state.update_data(to=message.text)
+    await message.answer("📞 <b>Телефон:</b>")
+    await state.set_state(OrderRide.waiting_for_phone)
 
 @dp.message(OrderRide.waiting_for_phone)
-async def taxi_ph(m: types.Message, s: FSMContext):
-    await s.update_data(ph=m.text)
-    await m.answer("💰 <b>Ваша цена?</b>")
-    await s.set_state(OrderRide.waiting_for_price)
+async def taxi_ph(message: types.Message, state: FSMContext):
+    await state.update_data(ph=message.text)
+    await message.answer("💰 <b>Ваша цена?</b>")
+    await state.set_state(OrderRide.waiting_for_price)
 
 @dp.message(OrderRide.waiting_for_price)
-async def taxi_send(m: types.Message, s: FSMContext):
-    data = await s.get_data()
-    cid = m.from_user.id
-    active_orders[cid] = {"type": "taxi", "status": "pending", "price": m.text, "from": data['fr'], "to": data['to'], "phone": data['ph'], "driver_offers": {}}
-    await m.answer("✅ <b>Ищем...</b>", reply_markup=main_kb)
-    await s.clear()
+async def taxi_send(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    cid = message.from_user.id
+    active_orders[cid] = {"type": "taxi", "status": "pending", "price": message.text, "from": data['fr'], "to": data['to'], "phone": data['ph'], "driver_offers": {}}
+    await message.answer("✅ <b>Ищем...</b>", reply_markup=main_kb)
+    await state.clear()
     
-    text = f"🚕 <b>ЗАКАЗ ТАКСИ</b>\n📍 {data['fr']} -> {data['to']}\n💰 {m.text}"
+    text = f"🚕 <b>ЗАКАЗ ТАКСИ</b>\n📍 {data['fr']} -> {data['to']}\n💰 {message.text}"
     dkb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ЗАБРАТЬ", callback_data=f"take_taxi_{cid}"), InlineKeyboardButton(text="💰 ТОРГ", callback_data=f"cnt_taxi_{cid}")]])
     akb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ЗАБРАТЬ (АДМИН)", callback_data=f"adm_take_taxi_{cid}"), InlineKeyboardButton(text="💰 ТОРГ", callback_data=f"cnt_taxi_{cid}")]])
     await broadcast_order_to_drivers(cid, text, dkb, akb)
