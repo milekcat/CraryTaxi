@@ -23,7 +23,7 @@ if not API_TOKEN or not OWNER_ID:
     exit()
 
 OWNER_ID = int(OWNER_ID)
-# 👑 СПИСОК СУПЕР-АДМИНОВ (Владелец + Партнер)
+# 👑 СПИСОК СУПЕР-АДМИНОВ
 SUPER_ADMINS = [OWNER_ID, 6004764782]
 
 # 🔑 СЕКРЕТНЫЕ КЛЮЧИ
@@ -49,7 +49,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # Таблица водителей
+    # Таблица водителей (Добавлено поле commission)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS drivers (
             user_id INTEGER PRIMARY KEY,
@@ -62,12 +62,11 @@ def init_db():
             role TEXT DEFAULT 'driver',
             balance INTEGER DEFAULT 0,
             rating_sum INTEGER DEFAULT 0,
-            rating_count INTEGER DEFAULT 0
+            rating_count INTEGER DEFAULT 0,
+            commission INTEGER DEFAULT 10
         )
     """)
     cursor.execute("CREATE TABLE IF NOT EXISTS clients (user_id INTEGER PRIMARY KEY)")
-    
-    # История
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS order_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,8 +83,8 @@ def init_db():
         cursor.execute("SELECT 1 FROM drivers WHERE user_id = ?", (admin_id,))
         if not cursor.fetchone():
             cursor.execute(
-                "INSERT INTO drivers (user_id, username, fio, car_info, payment_info, access_code, status, role) VALUES (?, ?, ?, ?, ?, ?, 'active', 'owner')",
-                (admin_id, "BOSS", "Владелец Сети", "Black Volga VIP", "Сбер: +70000000000", f"ADMIN_{admin_id}")
+                "INSERT INTO drivers (user_id, username, fio, car_info, payment_info, access_code, status, role, commission) VALUES (?, ?, ?, ?, ?, ?, 'active', 'owner', 0)",
+                (admin_id, "BOSS", "Владелец Сети", "Black Volga VIP", "Сбер", f"ADMIN_{admin_id}")
             )
         else:
             cursor.execute("UPDATE drivers SET role='owner', status='active' WHERE user_id=?", (admin_id,))
@@ -127,7 +126,8 @@ def get_driver_by_code(code):
 
 def get_driver_info(user_id):
     conn = sqlite3.connect(DB_PATH)
-    res = conn.execute("SELECT username, car_info, payment_info, balance, status, access_code, role, fio, rating_sum, rating_count FROM drivers WHERE user_id=?", (user_id,)).fetchone()
+    # 0:username, 1:car, 2:payment, 3:balance, 4:status, 5:code, 6:role, 7:fio, 8:r_sum, 9:r_count, 10:commission
+    res = conn.execute("SELECT username, car_info, payment_info, balance, status, access_code, role, fio, rating_sum, rating_count, commission FROM drivers WHERE user_id=?", (user_id,)).fetchone()
     conn.close()
     return res
 
@@ -159,9 +159,13 @@ def update_order_rating(order_id, rating, driver_id):
 
 def add_commission(driver_id, amount):
     if is_admin(driver_id): return 
-    commission = int(amount * 0.10)
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("UPDATE drivers SET balance = balance + ? WHERE user_id=?", (commission, driver_id))
+    # Получаем персональную комиссию
+    row = conn.execute("SELECT commission FROM drivers WHERE user_id=?", (driver_id,)).fetchone()
+    percent = row[0] if row else 10
+    
+    commission_val = int(amount * (percent / 100))
+    conn.execute("UPDATE drivers SET balance = balance + ? WHERE user_id=?", (commission_val, driver_id))
     conn.commit()
     conn.close()
 
@@ -178,29 +182,24 @@ async def notify_admins(text, markup=None):
         except: pass
 
 # ==========================================
-# 📜 МЕНЮ УСЛУГ (ПОЛНОЕ)
+# 📜 ПОЛНОЕ МЕНЮ УСЛУГ
 # ==========================================
 CRAZY_SERVICES = {
-    # LEVEL 1
-    "candy": {"cat": 1, "price": 0, "name": "🍬 Конфетка", "desc": "Водитель с максимально серьезным лицом (как на государственных похоронах) вручает вам элитную барбариску. Это знак глубочайшего уважения."},
-    "nose": {"cat": 1, "price": 300, "name": "👃 Палец в носу", "desc": "Всю поездку (или до первого поста ГАИ) водитель едет с пальцем в носу. Вы платите за его моральные страдания, потерю авторитета и ваш истерический смех."},
-    "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Водитель выходит, картинно открывает вам дверь, кланяется в пояс и называет вас 'Сир' или 'Миледи'. Чувство превосходства включено в стоимость."},
-    "joke": {"cat": 1, "price": 50, "name": "🤡 Тупой анекдот", "desc": "Анекдот категории 'Б' из золотой коллекции таксиста 90-х. Смеяться не обязательно, но желательно, чтобы не обидеть тонкую творческую натуру водителя."},
-    "silence": {"cat": 1, "price": 150, "name": "🤐 Полная тишина", "desc": "Режим 'Ниндзя'. Музыка выключается, водитель молчит как рыба. Даже если вы спросите дорогу — он ответит языком жестов. Идеально для интровертов."},
-    # LEVEL 2
-    "granny": {"cat": 2, "price": 800, "name": "👵 Бабушка-ворчунья", "desc": "Ролевая игра. Всю дорогу буду бубнить: 'Куда прешь, наркоман?', 'Шапку надень!', 'Вот в наше время...'."},
-    "gopnik": {"cat": 2, "price": 500, "name": "🍺 Четкий пацанчик", "desc": "Едем под пацанский рэп, водитель сидит на корточках (шутка), называет вас 'Братишка' и решает вопросики."},
+    "candy": {"cat": 1, "price": 0, "name": "🍬 Конфетка", "desc": "Водитель с максимально серьезным лицом вручает вам элитную барбариску. Это знак глубочайшего уважения."},
+    "nose": {"cat": 1, "price": 300, "name": "👃 Палец в носу", "desc": "Всю поездку (или до первого поста ГАИ) водитель едет с пальцем в носу. Вы платите за его моральные страдания и потерю авторитета."},
+    "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Водитель выходит, картинно открывает вам дверь, кланяется в пояс и называет вас 'Сир' или 'Миледи'."},
+    "joke": {"cat": 1, "price": 50, "name": "🤡 Тупой анекдот", "desc": "Анекдот категории 'Б'. Смеяться не обязательно, но желательно, чтобы не обидеть тонкую творческую натуру водителя."},
+    "silence": {"cat": 1, "price": 150, "name": "🤐 Полная тишина", "desc": "Режим 'Ниндзя'. Музыка выключается, водитель молчит как рыба. Даже если вы спросите дорогу — он ответит языком жестов."},
+    "granny": {"cat": 2, "price": 800, "name": "👵 Бабушка-ворчунья", "desc": "Ролевая игра. Всю дорогу буду бубнить: 'Куда прешь, наркоман?', 'Шапку надень!', 'Вот в наше время такси стоило копейку!'."},
+    "gopnik": {"cat": 2, "price": 500, "name": "🍺 Четкий пацанчик", "desc": "Едем под пацанский рэп, водитель сидит на корточках (шутка), называет вас 'Братишка', лузгает семечки и решает вопросики."},
     "guide": {"cat": 2, "price": 600, "name": "🗣 Ужасный гид", "desc": "Водитель проводит экскурсию, выдумывая факты на ходу. 'Вот этот ларек построил Иван Грозный лично'. Чем бредовее факты, тем лучше."},
-    "psych": {"cat": 2, "price": 1000, "name": "🧠 Психолог", "desc": "Вы жалуетесь на жизнь, бывших и начальника. Водитель кивает, говорит 'Угу', вздыхает и дает житейские советы уровня Ошо."},
-    # LEVEL 3
-    "spy": {"cat": 3, "price": 2000, "name": "🕵️‍♂️ Шпион 007", "desc": "Черные очки, паранойя. Водитель постоянно проверяет 'хвост', говорит по рации кодами ('Орел в гнезде') и прячет лицо от камер."},
+    "psych": {"cat": 2, "price": 1000, "name": "🧠 Психолог", "desc": "Вы жалуетесь на жизнь, бывших и начальника. Водитель кивает, говорит 'Угу', вздыхает и дает житейские советы."},
+    "spy": {"cat": 3, "price": 2000, "name": "🕵️‍♂️ Шпион 007", "desc": "Черные очки, паранойя. Водитель постоянно проверяет 'хвост', говорит по рации кодами ('Орел в гнезде')."},
     "karaoke": {"cat": 3, "price": 5000, "name": "🎤 Адское Караоке", "desc": "Врубаем 'Рюмку водки' или 'Знаешь ли ты' на полную! Водитель орет песни вместе с вами. Фальшиво, громко, но очень душевно."},
-    "dance": {"cat": 3, "price": 15000, "name": "💃 Танцы на капоте", "desc": "На красном свете водитель выбегает из машины и танцует макарену или лезгинку перед капотом. Прохожие снимают, вам стыдно, всем весело!"},
-    # LEVEL 4
-    "kidnap": {"cat": 4, "price": 30000, "name": "🎭 Дружеское похищение", "desc": "Вас (понарошку, но реалистично) грузят в багажник (или на заднее), надевают мешок на голову и везут в лес... пить элитный чай с баранками."},
-    "tarzan": {"cat": 4, "price": 50000, "name": "🦍 Тарзан-Шоу", "desc": "Водитель бьет себя в грудь, издает гортанные звуки, рычит на прохожих и называет другие машины 'железными буйволами'. Санитары уже выехали."},
+    "dance": {"cat": 3, "price": 15000, "name": "💃 Танцы на капоте", "desc": "На красном свете водитель выбегает из машины и танцует макарену перед капотом. Прохожие снимают, вам стыдно, всем весело!"},
+    "kidnap": {"cat": 4, "price": 30000, "name": "🎭 Дружеское похищение", "desc": "Вас (понарошку) грузят в багажник (или на заднее), надевают мешок на голову и везут в лес... пить элитный чай с баранками."},
+    "tarzan": {"cat": 4, "price": 50000, "name": "🦍 Тарзан-Шоу", "desc": "Водитель бьет себя в грудь, издает гортанные звуки, рычит на прохожих и называет другие машины 'железными буйволами'."},
     "burn": {"cat": 4, "price": 1000000, "name": "🔥 Сжечь машину", "desc": "Финальный аккорд. Едем на пустырь. Вы платите миллион, я даю канистру. Гори оно всё огнем. Эпичный финал."},
-    # LEVEL 5 (ДЛЯ ДАМ)
     "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Водитель сделает изысканный, поэтичный комплимент вашим глазам. Возможно, сравнит их с звездами или фарами ксенона."},
     "smile": {"cat": 5, "price": 0, "name": "😁 Улыбка", "desc": "Водитель скажет, что ваша улыбка освещает этот старый, пыльный салон лучше, чем аварийка в ночи."},
     "style": {"cat": 5, "price": 0, "name": "👠 Икона стиля", "desc": "Восхищение вашим образом. Водитель поинтересуется, не едете ли вы случайно с показа мод в Париже."},
@@ -252,8 +251,11 @@ class UnlockMenu(StatesGroup):
 class AdminEditDriver(StatesGroup):
     waiting_for_new_value = State()
 
-class AdminBilling(StatesGroup): # Новый стейт для биллинга
+class AdminBilling(StatesGroup):
     waiting_for_custom_req = State()
+
+class AdminBroadcast(StatesGroup):
+    waiting_for_text = State()
 
 # ==========================================
 # ⌨️ UI
@@ -274,7 +276,7 @@ tos_kb = InlineKeyboardMarkup(inline_keyboard=[
 ])
 
 # ==========================================
-# 🛑 СТАРТ И TOS
+# 🛑 СТАРТ
 # ==========================================
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
@@ -283,16 +285,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     if is_client_accepted(message.from_user.id):
         await message.answer("С возвращением! Меню активно 👇", reply_markup=main_kb)
     else:
-        await message.answer(
-            "⚠️ <b>CRAZY TAXI: ЗОНА ПОВЫШЕННОГО РИСКА</b>\n\n"
-            "Мы не возим скучных людей. Мы продаем эмоции.\n\n"
-            "<b>Правила клуба:</b>\n"
-            "1. Что происходит в такси — остается в такси.\n"
-            "2. Водитель — художник, салон — его холст.\n"
-            "3. Юристы бессильны.\n\n"
-            "Готовы рискнуть?", 
-            reply_markup=tos_kb
-        )
+        await message.answer("⚠️ <b>CRAZY TAXI: ЗОНА ПОВЫШЕННОГО РИСКА</b>\n\nГотовы рискнуть?", reply_markup=tos_kb)
 
 @dp.callback_query(F.data == "accept_tos")
 async def tos_accepted(callback: types.CallbackQuery):
@@ -309,18 +302,13 @@ async def tos_declined(callback: types.CallbackQuery):
 
 async def check_tos(message: types.Message) -> bool:
     if not is_client_accepted(message.from_user.id):
-        await message.answer("🛑 <b>ДОСТУП ЗАПРЕЩЕН!</b>\nНажмите /start и примите условия.")
+        await message.answer("🛑 <b>ДОСТУП ЗАПРЕЩЕН!</b>\nНажмите /start.")
         return False
     return True
 
 @dp.message(F.text == "⚖️ Вызвать адвоката")
 async def lawyer_menu(message: types.Message):
-    await message.answer(
-        "⚖️ <b>ЮРИДИЧЕСКИЙ ОТДЕЛ</b>\n\n"
-        "Наш партнер — лучший цифровой юрист:\n"
-        "<i>Жми кнопку, чтобы перейти в приемную.</i>",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🚨 ПЕРЕЙТИ К АДВОКАТУ", url=LAWYER_LINK)]])
-    )
+    await message.answer("⚖️ <b>ЮРИДИЧЕСКИЙ ОТДЕЛ</b>\nПартнер — цифровой юрист:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🚨 ПЕРЕЙТИ", url=LAWYER_LINK)]]))
 
 # ==========================================
 # 🚀 МОНИТОРИНГ
@@ -332,9 +320,9 @@ async def update_admins_monitor(client_id, taking_driver_id):
     drv_info = get_driver_info(taking_driver_id)
     drv_name = f"@{drv_info[0]}" if drv_info[0] else "Unknown"
     fio = drv_info[7] if drv_info[7] else "Не указано"
-    taker_role = "👑 БОСС" if taking_driver_id == OWNER_ID else ("👮‍♂️ АДМИН" if is_admin(taking_driver_id) else "🚕 ВОДИТЕЛЬ")
+    role = "АДМИН" if is_admin(taking_driver_id) else "ВОДИТЕЛЬ"
     
-    text = f"🚫 <b>ЗАКАЗ ЗАБРАЛ: {taker_role} {drv_name}</b>\nФИО: {fio}\nАвто: {drv_info[1]}\n\n{order.get('broadcasting_text','')}"
+    text = f"🚫 <b>ЗАКАЗ ЗАБРАЛ: {role} {drv_name}</b>\nФИО: {fio}\nАвто: {drv_info[1]}\n\n{order.get('broadcasting_text','')}"
     
     for admin_id, msg_id in order['admin_msg_ids'].items():
         try: await bot.edit_message_text(chat_id=admin_id, message_id=msg_id, text=text, reply_markup=None)
@@ -343,7 +331,7 @@ async def update_admins_monitor(client_id, taking_driver_id):
 async def broadcast_order_to_drivers(client_id, order_text, driver_kb, admin_kb):
     admins = get_all_admins_ids()
     admin_msg_map = {}
-    admin_text = f"🚨 <b>МОНИТОРИНГ (ВСЕ АДМИНЫ)</b>\n\n{order_text}"
+    admin_text = f"🚨 <b>МОНИТОРИНГ</b>\n\n{order_text}"
     
     for admin_id in admins:
         try:
@@ -362,18 +350,17 @@ async def broadcast_order_to_drivers(client_id, order_text, driver_kb, admin_kb)
     simple_drivers = [d for d in all_active if d not in admins]
     
     if not simple_drivers and not admins:
-        await search_msg.edit_text("😔 <b>Все машины заняты.</b> Администрация уведомлена.")
+        await search_msg.edit_text("😔 <b>Все машины заняты.</b>")
         return
 
     tasks = []
     for d_id in simple_drivers:
         tasks.append(bot.send_message(d_id, f"⚡ <b>ЗАКАЗ!</b>\n{order_text}", reply_markup=driver_kb))
-    
     if tasks: await asyncio.gather(*tasks, return_exceptions=True)
-    await search_msg.edit_text("⏳ <b>Запрос отправлен всем пилотам!</b> Ждем реакции...")
+    await search_msg.edit_text("⏳ <b>Запрос отправлен всем пилотам!</b>")
 
 # ==========================================
-# 🚕 ТАКСИ
+# 🚕 ТАКСИ + ТОРГ
 # ==========================================
 @dp.message(F.text == "🚕 Заказать такси (Поиск)")
 async def taxi_start(message: types.Message, state: FSMContext):
@@ -396,7 +383,7 @@ async def taxi_to(message: types.Message, state: FSMContext):
 @dp.message(OrderRide.waiting_for_phone)
 async def taxi_ph(message: types.Message, state: FSMContext):
     await state.update_data(ph=message.text)
-    await message.answer("💰 <b>Ваша цена за поездку (в рублях)?</b>")
+    await message.answer("💰 <b>Ваша цена?</b>")
     await state.set_state(OrderRide.waiting_for_price)
 
 @dp.message(OrderRide.waiting_for_price)
@@ -404,7 +391,7 @@ async def taxi_send(message: types.Message, state: FSMContext):
     data = await state.get_data()
     cid = message.from_user.id
     active_orders[cid] = {"type": "taxi", "status": "pending", "price": message.text, "from": data['fr'], "to": data['to'], "phone": data['ph'], "driver_offers": {}}
-    await message.answer("✅ <b>Заявка сформирована!</b>", reply_markup=main_kb)
+    await message.answer("✅ <b>Заявка создана!</b>", reply_markup=main_kb)
     await state.clear()
     
     text = f"🚕 <b>НОВЫЙ ЗАКАЗ ТАКСИ</b>\n\n📍 Откуда: <b>{data['fr']}</b>\n🏁 Куда: <b>{data['to']}</b>\n💰 Клиент предлагает: <b>{message.text}</b>"
@@ -434,7 +421,50 @@ async def take_taxi(callback: types.CallbackQuery):
     cli_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➕ ДОБАВИТЬ ОСТАНОВКУ", callback_data="add_stop")]])
     await bot.send_message(cid, f"🚕 <b>ВОДИТЕЛЬ ВЫЕХАЛ!</b>\n\n👤 <b>{info[7]}</b>\n🚘 {info[1]}\n📞 {order['phone']}\n💰 {order['price']}₽\n\n🔐 <b>КОД CRAZY-МЕНЮ:</b> <code>{info[5]}</code>", reply_markup=cli_kb)
 
-# --- ДОБАВЛЕНИЕ ТОЧКИ ---
+# --- ТОРГ ---
+@dp.callback_query(F.data.startswith("cnt_"))
+async def cnt_start(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    parts = callback.data.split("_")
+    await state.update_data(cid=int(parts[2]), type=parts[1])
+    await callback.message.answer("Твоя цена:")
+    await state.set_state(DriverCounterOffer.waiting_for_offer)
+    await callback.answer()
+
+@dp.message(DriverCounterOffer.waiting_for_offer)
+async def cnt_send(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    cid, did = data['cid'], message.from_user.id
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ ДА", callback_data=f"ok_off_{data['type']}_{cid}_{did}"), 
+         InlineKeyboardButton(text="❌ НЕТ", callback_data=f"no_off_{cid}")]
+    ])
+    await bot.send_message(cid, f"⚡ <b>Водитель предлагает:</b> {message.text}", reply_markup=kb)
+    await message.answer("Отправлено.")
+    await state.clear()
+
+@dp.callback_query(F.data.startswith("ok_off_"))
+async def ok_off(c: types.CallbackQuery):
+    parts = c.data.split("_")
+    cid, did = int(parts[3]), int(parts[4])
+    active_orders[cid]['driver_id'] = did
+    active_orders[cid]['status'] = 'accepted'
+    client_driver_link[cid] = did
+    await update_admins_monitor(cid, did)
+    
+    info = get_driver_info(did)
+    drv_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🏁 ЗАВЕРШИТЬ", callback_data=f"ask_finish_{cid}")]])
+    await bot.send_message(did, f"✅ Клиент согласен!\n📞 {active_orders[cid]['phone']}", reply_markup=drv_kb)
+    
+    cli_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➕ ДОБАВИТЬ ТОЧКУ", callback_data="add_stop")]])
+    await c.message.edit_text(f"🚕 <b>Едет: {info[7]}</b>\n🔐 {info[5]}", reply_markup=cli_kb)
+
+@dp.callback_query(F.data.startswith("no_off_"))
+async def no_off(callback: types.CallbackQuery):
+    await callback.message.edit_text("❌ Вы отказались.")
+
+# --- ДОП. ТОЧКИ ---
 @dp.callback_query(F.data == "add_stop")
 async def add_stop_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer("📍 <b>Куда заехать?</b> (Адрес):")
@@ -454,21 +484,18 @@ async def add_stop_send(message: types.Message, state: FSMContext):
     order = active_orders.get(cid)
     
     if not order or 'driver_id' not in order:
-        await message.answer("❌ Нет активной поездки.")
+        await message.answer("❌ Ошибка.")
         await state.clear()
         return
         
     did = order['driver_id']
-    extra_price = message.text
-    address = data['addr']
-    await state.clear()
-    
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ БЕРЕМ", callback_data=f"stop_ok_{cid}_{extra_price}")],
+        [InlineKeyboardButton(text="✅ БЕРЕМ", callback_data=f"stop_ok_{cid}_{message.text}")],
         [InlineKeyboardButton(text="❌ ОТКАЗ", callback_data=f"stop_no_{cid}")]
     ])
-    await bot.send_message(did, f"🔔 <b>НОВАЯ ТОЧКА!</b>\n\n📍 {address}\n💰 +{extra_price}₽\nБерем?", reply_markup=kb)
-    await message.answer("⏳ Запрос отправлен водителю...")
+    await bot.send_message(did, f"🔔 <b>НОВАЯ ТОЧКА!</b>\n\n📍 {data['addr']}\n💰 +{message.text}₽\nБерем?", reply_markup=kb)
+    await message.answer("⏳ Отправлено водителю...")
+    await state.clear()
 
 @dp.callback_query(F.data.startswith("stop_ok_"))
 async def stop_ok(c: types.CallbackQuery):
@@ -478,12 +505,11 @@ async def stop_ok(c: types.CallbackQuery):
     
     order = active_orders.get(cid)
     if order:
-        old_price = extract_price(order['price'])
-        new_price = old_price + extra
+        new_price = extract_price(order['price']) + extra
         order['price'] = str(new_price)
-        await bot.send_message(cid, f"✅ <b>Водитель согласился!</b>\nНовая цена: <b>{new_price}₽</b>")
+        await bot.send_message(cid, f"✅ <b>Водитель согласен!</b>\nНовая цена: {new_price}₽")
         drv_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🏁 ЗАВЕРШИТЬ ПОЕЗДКУ", callback_data=f"ask_finish_{cid}")]])
-        await c.message.edit_text(f"✅ <b>Точка добавлена!</b>\n💰 Итого: <b>{new_price}₽</b>", reply_markup=drv_kb)
+        await c.message.edit_text(f"✅ <b>Добавлено!</b>\nИтого: {new_price}₽", reply_markup=drv_kb)
 
 @dp.callback_query(F.data.startswith("stop_no_"))
 async def stop_no(c: types.CallbackQuery):
@@ -499,7 +525,7 @@ async def ask_finish(c: types.CallbackQuery):
         [InlineKeyboardButton(text="⭐ 1", callback_data=f"rate_{cid}_1"), InlineKeyboardButton(text="⭐ 3", callback_data=f"rate_{cid}_3"), InlineKeyboardButton(text="⭐ 5", callback_data=f"rate_{cid}_5")],
         [InlineKeyboardButton(text="⏩ ПРОПУСТИТЬ", callback_data=f"rate_{cid}_0")]
     ])
-    await bot.send_message(cid, "🏁 <b>Приехали! Оцените водителя:</b>", reply_markup=kb)
+    await bot.send_message(cid, "🏁 <b>Приехали! Оцените:</b>", reply_markup=kb)
     await c.message.edit_text("✅ <b>Поездка закрыта.</b>")
 
 @dp.callback_query(F.data.startswith("rate_"))
@@ -532,10 +558,10 @@ async def rate_ride(c: types.CallbackQuery):
 async def show_cats(message: types.Message):
     if not await check_tos(message): return
     if message.from_user.id not in client_driver_link:
-        await message.answer("🔒 <b>НЕТ ДОСТУПА!</b>\nСядьте в машину и введите ключ водителя.", reply_markup=main_kb)
+        await message.answer("🔒 <b>НЕТ ДОСТУПА!</b>\nСядьте в машину и введите ключ.", reply_markup=main_kb)
         return
     btns = [[InlineKeyboardButton(text=n, callback_data=f"cat_{i}")] for i, n in CATEGORIES.items()]
-    await message.answer("🔥 <b>ВЫБЕРИТЕ УРОВЕНЬ ЖЕСТКОСТИ:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
+    await message.answer("🔥 <b>КАТЕГОРИИ:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
 
 @dp.callback_query(F.data.startswith("cat_"))
 async def open_cat(c: types.CallbackQuery):
@@ -562,13 +588,11 @@ async def sel_srv(c: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("do_order_"))
 async def do_order(c: types.CallbackQuery):
-    key = c.data.split("_")[-1] # FIX
+    key = c.data.split("_")[-1] 
     srv = CRAZY_SERVICES[key]
     cid, did = c.from_user.id, client_driver_link.get(c.from_user.id)
-    
     active_orders[cid] = {"type": "crazy", "status": "direct", "price": str(srv["price"]), "driver_id": did, "service": srv}
     await c.message.edit_text("⏳ <b>Отправляем...</b>")
-    
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ПРИНЯТЬ", callback_data=f"drv_acc_{cid}")]])
     await bot.send_message(did, f"🔔 <b>ЗАКАЗ</b>\n🎭 {srv['name']}\n💰 {srv['price']}₽\n📝 {srv['desc']}", reply_markup=kb)
 
@@ -578,12 +602,34 @@ async def drv_acc_crazy(c: types.CallbackQuery):
     order = active_orders.get(cid)
     if not order: return
     info = get_driver_info(c.from_user.id)
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ВЫПОЛНЕНО / ОПЛАТИЛ", callback_data=f"ask_finish_{cid}")]])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ГОТОВО / ОПЛАТИЛ", callback_data=f"ask_finish_{cid}")]])
     await bot.send_message(cid, f"✅ <b>Водитель принял!</b>\n💳 Перевод: <code>{info[2]}</code>", reply_markup=kb)
     await c.message.edit_text("✅ В работе.")
 
+@dp.message(F.text == "💡 Свой вариант (Идея)")
+async def idea_h(m: types.Message, s: FSMContext):
+    await s.clear()
+    await m.answer("Идея:")
+    await s.set_state(CustomIdea.waiting_for_idea)
+
+@dp.message(CustomIdea.waiting_for_idea)
+async def idea_p(m: types.Message, s: FSMContext):
+    await s.update_data(idea=m.text)
+    await m.answer("Бюджет:")
+    await s.set_state(CustomIdea.waiting_for_price)
+
+@dp.message(CustomIdea.waiting_for_price)
+async def idea_s(m: types.Message, s: FSMContext):
+    data = await s.get_data()
+    cid = m.from_user.id
+    active_orders[cid] = {"type": "crazy", "status": "pending", "price": m.text, "service": {"name": "Идея", "desc": data['idea']}, "driver_offers": {}}
+    await m.answer("✅ Отправлено!", reply_markup=main_kb)
+    await s.clear()
+    dkb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⚡️ ЗАБРАТЬ", callback_data=f"take_crazy_{cid}"), InlineKeyboardButton(text="💰 ТОРГ", callback_data=f"cnt_crazy_{cid}")]])
+    await broadcast_order_to_drivers(cid, f"💡 <b>ИДЕЯ:</b> {data['idea']}\n💰 {m.text}", dkb, dkb)
+
 # ==========================================
-# 🪪 КАБИНЕТ
+# 🪪 КАБИНЕТ + РЕГИСТРАЦИЯ
 # ==========================================
 @dp.message(Command("cab"))
 async def cab(m: types.Message, state: FSMContext):
@@ -611,27 +657,31 @@ async def cab(m: types.Message, state: FSMContext):
         f"👤 {info[7]} (@{info[0]})\n"
         f"⭐ Рейтинг: <b>{rating_val}</b>\n"
         f"💰 Баланс: <b>{info[3]}₽</b>\n"
+        f"📊 Комиссия: <b>{info[10]}%</b>\n"
         f"🔑 Код: <code>{info[5]}</code>\n"
         f"📜 <b>ИСТОРИЯ (Последние 5):</b>\n{hist_txt}"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💸 Оплатить долг", callback_data="cab_pay")]])
     await m.answer(text, reply_markup=kb)
 
-# ==========================================
-# 🔥 VIP РЕГИСТРАЦИЯ
-# ==========================================
+@dp.callback_query(F.data == "cab_pay")
+async def cab_pay(c: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    info = get_driver_info(c.from_user.id)
+    boss = get_driver_info(OWNER_ID)
+    await c.message.answer(f"💸 Долг: <b>{info[3]}₽</b>\nПереведи Боссу: <b>{boss[2]}</b>")
+    await c.answer()
+
 @dp.message(Command("vip"))
 async def vip_reg(m: types.Message, s: FSMContext):
     await s.clear()
     try:
         key = m.text.split()[1]
         role = "driver"
-        
         if key == VIP_ADMIN_KEY: role = "admin"
         elif key != VIP_DRIVER_KEY:
             await m.answer("❌ Неверный ключ.")
             return
-            
         await s.update_data(role=role)
         await m.answer(f"🔑 <b>КЛЮЧ {role.upper()} ПРИНЯТ!</b>\n\nВведите ФИО:")
         await s.set_state(DriverVipRegistration.waiting_for_fio)
@@ -640,7 +690,7 @@ async def vip_reg(m: types.Message, s: FSMContext):
 @dp.message(DriverVipRegistration.waiting_for_fio)
 async def vip_fio(m: types.Message, s: FSMContext):
     await s.update_data(fio=m.text)
-    await m.answer("🚘 Авто (Марка, Номер):")
+    await m.answer("🚘 Авто:")
     await s.set_state(DriverVipRegistration.waiting_for_car)
 
 @dp.message(DriverVipRegistration.waiting_for_car)
@@ -662,21 +712,18 @@ async def vip_fin(m: types.Message, s: FSMContext):
     role = data.get('role', 'driver')
     conn = sqlite3.connect(DB_PATH)
     try:
-        conn.execute("INSERT INTO drivers (user_id, username, fio, car_info, payment_info, access_code, status, role) VALUES (?, ?, ?, ?, ?, ?, 'active', ?)", 
+        conn.execute("INSERT INTO drivers (user_id, username, fio, car_info, payment_info, access_code, status, role, commission) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, 10)", 
                      (m.from_user.id, m.from_user.username, data['fio'], data['car'], data['pay'], code, role))
         conn.commit()
-        await m.answer(f"🚀 <b>ВЫ ПРИНЯТЫ КАК {role.upper()}!</b>\nСтатус: ACTIVE. Жмите /cab")
-        await notify_admins(f"⭐ <b>VIP РЕГИСТРАЦИЯ ({role.upper()})</b>\n@{m.from_user.username} ({data['fio']})")
+        await m.answer("🚀 <b>ВЫ ПРИНЯТЫ!</b> Жмите /cab")
+        await notify_admins(f"⭐ <b>VIP ({role}):</b> {data['fio']}")
     except: await m.answer("❌ Код занят.")
     finally: conn.close()
     await s.clear()
 
-# ==========================================
-# 🛑 ОБЫЧНАЯ РЕГИСТРАЦИЯ
-# ==========================================
 @dp.message(Command("driver", "drive"))
 async def reg_start(m: types.Message, s: FSMContext):
-    await s.clear() # ВАЖНО: сброс
+    await s.clear()
     info = get_driver_info(m.from_user.id)
     if info:
         await m.answer("Уже есть. /cab" if info[4]=='active' else "Жди одобрения.")
@@ -708,74 +755,35 @@ async def reg_fin(m: types.Message, s: FSMContext):
     data = await s.get_data()
     conn = sqlite3.connect(DB_PATH)
     try:
-        conn.execute("INSERT INTO drivers (user_id, username, fio, car_info, payment_info, access_code, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')", 
+        conn.execute("INSERT INTO drivers (user_id, username, fio, car_info, payment_info, access_code, status, commission) VALUES (?, ?, ?, ?, ?, ?, 'pending', 10)", 
                      (m.from_user.id, m.from_user.username, data['fio'], data['car'], data['pay'], code))
         conn.commit()
         await m.answer("📝 Заявка отправлена.")
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ОДОБРИТЬ", callback_data=f"adm_app_{m.from_user.id}")]])
-        await notify_admins(f"🚨 <b>НОВЫЙ ВОДИТЕЛЬ</b>\n{data['fio']}\n{data['car']}", kb)
+        await notify_admins(f"🚨 <b>НОВЫЙ:</b> {data['fio']}", kb)
     except: await m.answer("❌ Код занят.")
     finally: conn.close()
     await s.clear()
 
 # ==========================================
-# 🚕 ТОРГ
+# 👑 АДМИНКА + БИЛЛИНГ + КОМИССИЯ
 # ==========================================
-@dp.callback_query(F.data.startswith("cnt_"))
-async def cnt_start(c: types.CallbackQuery, s: FSMContext):
-    parts = c.data.split("_")
-    await s.update_data(cid=int(parts[2]), type=parts[1])
-    await c.message.answer("Твоя цена:")
-    await s.set_state(DriverCounterOffer.waiting_for_offer)
-    await c.answer()
-
-@dp.message(DriverCounterOffer.waiting_for_offer)
-async def cnt_send(m: types.Message, s: FSMContext):
-    data = await s.get_data()
-    cid, did = data['cid'], m.from_user.id
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ДА", callback_data=f"ok_off_{data['type']}_{cid}_{did}"), InlineKeyboardButton(text="❌ НЕТ", callback_data=f"no_off_{cid}")]])
-    await bot.send_message(cid, f"⚡ <b>Водитель предлагает:</b> {m.text}", reply_markup=kb)
-    await m.answer("Отправлено.")
+@dp.message(Command("admin"))
+async def admin_panel(m: types.Message, s: FSMContext):
     await s.clear()
+    if not is_admin(m.from_user.id):
+        await m.answer("⛔ Доступ запрещен.")
+        return
+    conn = sqlite3.connect(DB_PATH)
+    drs = conn.execute("SELECT user_id, username, balance, role, status, fio, commission FROM drivers").fetchall()
+    conn.close()
+    txt = "👑 <b>АДМИНКА</b>\n"
+    for d in drs:
+        ic = "🔒" if d[4]=='blocked' else ("👑" if d[3]=='owner' else ("👮" if d[3]=='admin' else "🚕"))
+        txt += f"{ic} {d[5]}\n💰 {d[2]}₽ | 📊 {d[6]}% | /edit_{d[0]}\n"
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📢 РАССЫЛКА", callback_data="admin_broadcast")]])
+    await m.answer(txt, reply_markup=kb)
 
-@dp.callback_query(F.data.startswith("ok_off_"))
-async def ok_off(c: types.CallbackQuery):
-    parts = c.data.split("_")
-    cid, did = int(parts[3]), int(parts[4])
-    active_orders[cid]['driver_id'] = did
-    active_orders[cid]['status'] = 'accepted'
-    client_driver_link[cid] = did
-    
-    info = get_driver_info(did)
-    drv_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🏁 ЗАВЕРШИТЬ", callback_data=f"ask_finish_{cid}")]])
-    await bot.send_message(did, f"✅ Клиент согласен!\n📞 {active_orders[cid]['phone']}", reply_markup=drv_kb)
-    
-    cli_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➕ ДОБАВИТЬ ТОЧКУ", callback_data="add_stop")]])
-    await c.message.edit_text(f"🚕 <b>Едет: {info[7]}</b>\n🔐 {info[5]}", reply_markup=cli_kb)
-
-@dp.message(F.text == "💡 Свой вариант (Идея)")
-async def idea_h(m: types.Message, s: FSMContext):
-    await s.clear()
-    await m.answer("Идея:")
-    await s.set_state(CustomIdea.waiting_for_idea)
-
-@dp.message(CustomIdea.waiting_for_idea)
-async def idea_p(m: types.Message, s: FSMContext):
-    await s.update_data(idea=m.text)
-    await m.answer("Бюджет:")
-    await s.set_state(CustomIdea.waiting_for_price)
-
-@dp.message(CustomIdea.waiting_for_price)
-async def idea_s(m: types.Message, s: FSMContext):
-    data = await s.get_data()
-    cid = m.from_user.id
-    active_orders[cid] = {"type": "crazy", "status": "pending", "price": m.text, "service": {"name": "Идея", "desc": data['idea']}, "driver_offers": {}}
-    await m.answer("✅ Отправлено!", reply_markup=main_kb)
-    await s.clear()
-    dkb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⚡️ ЗАБРАТЬ", callback_data=f"take_crazy_{cid}"), InlineKeyboardButton(text="💰 ТОРГ", callback_data=f"cnt_crazy_{cid}")]])
-    await broadcast_order_to_drivers(cid, f"💡 <b>ИДЕЯ:</b> {data['idea']}\n💰 {m.text}", dkb, dkb)
-
-# ADMIN
 @dp.callback_query(F.data.startswith("adm_app_"))
 async def admin_approve(c: types.CallbackQuery):
     if not is_admin(c.from_user.id): return
@@ -785,35 +793,23 @@ async def admin_approve(c: types.CallbackQuery):
     try: await bot.send_message(did, "🎉 Принят! /cab")
     except: pass
 
-@dp.callback_query(F.data == "cab_pay")
-async def cab_pay(c: types.CallbackQuery, state: FSMContext):
-    await state.clear()
-    info = get_driver_info(c.from_user.id)
-    boss = get_driver_info(OWNER_ID)
-    await c.message.answer(f"💸 Долг: <b>{info[3]}₽</b>\nПереведи Боссу: <b>{boss[2]}</b>")
-    await c.answer()
+@dp.message(F.text.startswith("/edit_"))
+async def edit_driver_start(m: types.Message):
+    if not is_admin(m.from_user.id): return
+    try: did = int(m.text.split("_")[1])
+    except: return
+    info = get_driver_info(did)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💰 Баланс", callback_data=f"edt_bal_{did}"), InlineKeyboardButton(text="📊 Комиссия", callback_data=f"edt_com_{did}")],
+        [InlineKeyboardButton(text="💸 Счет", callback_data=f"adm_bill_{did}"), InlineKeyboardButton(text="🔒 Блок / 🔓 Разблок", callback_data=f"adm_block_{did}")]
+    ])
+    await m.answer(f"Ред: {info[7]} ({info[10]}%)", reply_markup=kb)
 
-@dp.message(F.text == "🔐 Ввести КЛЮЧ услуги")
-async def key_start(m: types.Message, s: FSMContext):
-    await s.clear() # ВАЖНО: сброс
-    await m.answer("Код:")
-    await s.set_state(UnlockMenu.waiting_for_key)
-
-@dp.message(UnlockMenu.waiting_for_key)
-async def key_proc(m: types.Message, s: FSMContext):
-    drv = get_driver_by_code(m.text.strip().upper())
-    if drv:
-        client_driver_link[m.from_user.id] = drv[0]
-        await m.answer(f"🔓 <b>ОК!</b>\n👤 {drv[3]}\n🚘 {drv[2]}", reply_markup=main_kb)
-        await s.clear()
-    else: await m.answer("❌ Нет.")
-
-# --- УМНЫЙ БИЛЛИНГ (ВЫБОР РЕКВИЗИТОВ) ---
+# БИЛЛИНГ
 @dp.callback_query(F.data.startswith("adm_bill_"))
 async def bill_start(c: types.CallbackQuery, s: FSMContext):
     did = int(c.data.split("_")[2])
     await s.update_data(target_did=did)
-    
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💳 Реквизиты Босса", callback_data="bill_send_def")],
         [InlineKeyboardButton(text="✏️ Ввести вручную", callback_data="bill_send_cust")]
@@ -827,9 +823,9 @@ async def bill_def(c: types.CallbackQuery, s: FSMContext):
     did = data['target_did']
     boss = get_driver_info(OWNER_ID)
     info = get_driver_info(did)
-    try: await bot.send_message(did, f"⚠️ <b>ТРЕБОВАНИЕ ОПЛАТЫ!</b>\nВаш долг: {info[3]}₽\nРеквизиты: {boss[2]}")
+    try: await bot.send_message(did, f"⚠️ <b>ОПЛАТА:</b>\nВаш долг: {info[3]}₽\nРеквизиты: {boss[2]}")
     except: pass
-    await c.message.edit_text("✅ Счет (Босс) отправлен.")
+    await c.message.edit_text("✅ Счет отправлен.")
     await s.clear()
 
 @dp.callback_query(F.data == "bill_send_cust")
@@ -841,48 +837,15 @@ async def bill_cust(c: types.CallbackQuery, s: FSMContext):
 async def bill_send_custom_txt(m: types.Message, s: FSMContext):
     data = await s.get_data()
     did = data['target_did']
-    try: await bot.send_message(did, f"⚠️ <b>СЧЕТ НА ОПЛАТУ:</b>\n{m.text}")
+    try: await bot.send_message(did, f"⚠️ <b>СЧЕТ:</b>\n{m.text}")
     except: pass
     await m.answer("✅ Отправлено.")
     await s.clear()
 
-@dp.message(Command("admin"))
-async def admin_panel(m: types.Message, s: FSMContext):
-    await s.clear()
-    if not is_admin(m.from_user.id): return
-    conn = sqlite3.connect(DB_PATH)
-    drs = conn.execute("SELECT user_id, username, balance, role, status, fio FROM drivers").fetchall()
-    conn.close()
-    
-    txt = "👑 <b>АДМИНКА</b>\n"
-    for d in drs:
-        ic = "🔒" if d[4]=='blocked' else ("👑" if d[3]=='owner' else ("👮" if d[3]=='admin' else "🚕"))
-        txt += f"{ic} {d[5]}\n💰 {d[2]}₽ | /edit_{d[0]}\n"
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📢 РАССЫЛКА", callback_data="admin_broadcast")]])
-    await m.answer(txt, reply_markup=kb)
-
-# --- РЕДАКТИРОВАНИЕ ВОДИТЕЛЯ ---
-@dp.message(F.text.startswith("/edit_"))
-async def edit_driver_start(m: types.Message):
-    if not is_admin(m.from_user.id): return
-    try: did = int(m.text.split("_")[1])
-    except: return
-    info = get_driver_info(did)
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💰 Баланс", callback_data=f"edt_bal_{did}"), InlineKeyboardButton(text="💸 Счет", callback_data=f"adm_bill_{did}")],
-        [InlineKeyboardButton(text="🔒 Блок / 🔓 Разблок", callback_data=f"adm_block_{did}")]
-    ])
-    await m.answer(f"Ред: {info[7]}", reply_markup=kb)
-
-# --- РАССЫЛКА ---
-class AdminBroadcast(StatesGroup):
-    waiting_for_text = State()
-
+# РАССЫЛКА
 @dp.callback_query(F.data == "admin_broadcast")
 async def broadcast_start(c: types.CallbackQuery, s: FSMContext):
-    await c.message.answer("Введите текст рассылки для всех водителей:")
+    await c.message.answer("Текст рассылки:")
     await s.set_state(AdminBroadcast.waiting_for_text)
     await c.answer()
 
@@ -898,17 +861,19 @@ async def broadcast_send(m: types.Message, s: FSMContext):
     await m.answer(f"✅ Отправлено {count} водителям.")
     await s.clear()
 
-# --- ОБРАБОТКА CALLBACKS АДМИНА ---
+# БАЛАНС И КОМИССИЯ
 @dp.callback_query(F.data.startswith("edt_"))
-async def edit_balance(c: types.CallbackQuery, s: FSMContext):
-    did = int(c.data.split("_")[2])
-    await s.update_data(did=did, fld="balance")
-    await c.message.answer("Новый баланс:")
+async def edit_vals(c: types.CallbackQuery, s: FSMContext):
+    parts = c.data.split("_")
+    did = int(parts[2])
+    field = "balance" if parts[1] == "bal" else "commission"
+    await s.update_data(did=did, fld=field)
+    await c.message.answer(f"Новое значение для {field}:")
     await s.set_state(AdminEditDriver.waiting_for_new_value)
     await c.answer()
 
 @dp.message(AdminEditDriver.waiting_for_new_value)
-async def save_balance(m: types.Message, s: FSMContext):
+async def save_vals(m: types.Message, s: FSMContext):
     d = await s.get_data()
     update_driver_field(d['did'], d['fld'], m.text)
     await m.answer("✅")
@@ -922,6 +887,24 @@ async def block_driver(c: types.CallbackQuery):
     new_s = "blocked" if info[4] == "active" else "active"
     update_driver_field(did, "status", new_s)
     await c.message.edit_text(f"Статус: {new_s}")
+
+# ==========================================
+# 🔐 ВВОД КЛЮЧА
+# ==========================================
+@dp.message(F.text == "🔐 Ввести КЛЮЧ услуги")
+async def key_start(m: types.Message, s: FSMContext):
+    await s.clear()
+    await m.answer("Код:")
+    await s.set_state(UnlockMenu.waiting_for_key)
+
+@dp.message(UnlockMenu.waiting_for_key)
+async def key_proc(m: types.Message, s: FSMContext):
+    drv = get_driver_by_code(m.text.strip().upper())
+    if drv:
+        client_driver_link[m.from_user.id] = drv[0]
+        await m.answer(f"🔓 <b>ОК!</b>\n👤 {drv[3]}\n🚘 {drv[2]}", reply_markup=main_kb)
+        await s.clear()
+    else: await m.answer("❌ Нет.")
 
 async def main():
     await dp.start_polling(bot)
