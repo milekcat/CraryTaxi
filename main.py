@@ -37,7 +37,7 @@ dp = Dispatcher(storage=storage)
 active_orders = {} 
 
 # ==========================================
-# ⚖️ ЮРИДИЧЕСКАЯ ЛЕГЕНДА (ОЧЕНЬ ВАЖНО)
+# ⚖️ ЮРИДИЧЕСКАЯ БАЗА
 # ==========================================
 LEGAL_TEXT = (
     "<b>📜 ПУБЛИЧНАЯ ОФЕРТА (AGENCY AGREEMENT)</b>\n\n"
@@ -57,7 +57,6 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # 1. Артисты (бывшие водители)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS drivers (
             user_id INTEGER PRIMARY KEY,
@@ -74,7 +73,6 @@ def init_db():
             commission INTEGER DEFAULT 10
         )
     """)
-    # 2. Услуги Артистов
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS driver_services (
             driver_id INTEGER,
@@ -83,7 +81,6 @@ def init_db():
             PRIMARY KEY (driver_id, service_key)
         )
     """)
-    # 3. Зрители (Клиенты)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS clients (
             user_id INTEGER PRIMARY KEY,
@@ -91,7 +88,6 @@ def init_db():
             total_spent INTEGER DEFAULT 0
         )
     """)
-    # 4. История Шоу
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS order_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,7 +100,6 @@ def init_db():
         )
     """)
     
-    # Админы
     for admin_id in SUPER_ADMINS:
         cursor.execute("SELECT 1 FROM drivers WHERE user_id = ?", (admin_id,))
         if not cursor.fetchone():
@@ -253,7 +248,7 @@ async def safe_send_message(chat_id, text, reply_markup=None):
     except: return False
 
 # ==========================================
-# 📜 МЕНЮ ШОУ-ПРОГРАММ (ОБНОВЛЕНО)
+# 📜 МЕНЮ ШОУ-ПРОГРАММ
 # ==========================================
 CRAZY_SERVICES = {
     "candy": {"cat": 1, "price": 0, "name": "🍬 Презент", "desc": "Артист с серьезным лицом вручает вам элитную конфету в знак уважения."},
@@ -313,7 +308,6 @@ class ChatState(StatesGroup):
 main_kb = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🎭 Найти Артиста (с авто)")],
-        [KeyboardButton(text="🔐 Ввести КЛЮЧ услуги")],
         [KeyboardButton(text="📜 CRAZY МЕНЮ (Категории)")],
         [KeyboardButton(text="👤 Мой Кабинет"), KeyboardButton(text="📄 ОФЕРТА")]
     ], resize_keyboard=True
@@ -523,13 +517,24 @@ async def cnt_snd(m: types.Message, s: FSMContext):
     await m.answer("Отправлено."); await s.clear()
 
 # ==========================================
-# 📜 CRAZY МЕНЮ
+# 📜 CRAZY МЕНЮ (СМЕНА РЕЖИМА НА SHOWCASE)
 # ==========================================
 @dp.message(F.text == "📜 CRAZY МЕНЮ (Категории)")
 async def show_cats(message: types.Message, state: FSMContext):
     if not await check_tos(message): return
     did = get_linked_driver(message.from_user.id)
-    if not did: return await message.answer("🔒 Нужен код Исполнителя!")
+    
+    # 🌟 ЛОГИКА "ВИТРИНЫ": Если нет водителя, показываем меню, но не даем заказать
+    is_showcase = False
+    if not did:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Я В МАШИНЕ (ВВЕСТИ КОД)", callback_data="enter_code_dialog")],
+            [InlineKeyboardButton(text="👀 ПРОСТО СМОТРЮ", callback_data="start_showcase")]
+        ])
+        await message.answer("🚖 <b>Вы уже в машине у нашего Артиста?</b>", reply_markup=kb)
+        return
+
+    # Стандартный режим (с водителем)
     active_srv = get_driver_active_services(did)
     btns = []
     for cat_id, cat_name in CATEGORIES.items():
@@ -537,21 +542,56 @@ async def show_cats(message: types.Message, state: FSMContext):
             btns.append([InlineKeyboardButton(text=cat_name, callback_data=f"cat_{cat_id}")])
     await message.answer("🔥 <b>ВЫБЕРИТЕ ЖАНР:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
 
+@dp.callback_query(F.data == "enter_code_dialog")
+async def enter_code_dialog(c: types.CallbackQuery, state: FSMContext):
+    await c.message.answer("Введите код Артиста:"); await state.set_state(UnlockMenu.waiting_for_key)
+
+@dp.callback_query(F.data == "start_showcase")
+async def start_showcase(c: types.CallbackQuery, state: FSMContext):
+    await state.update_data(showcase=True) # Флаг витрины
+    btns = [[InlineKeyboardButton(text=cat_name, callback_data=f"cat_{cat_id}")] for cat_id, cat_name in CATEGORIES.items()]
+    await c.message.edit_text("👀 <b>РЕЖИМ ВИТРИНЫ</b> (Только просмотр):", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
+
 @dp.callback_query(F.data.startswith("cat_"))
 async def open_cat(c: types.CallbackQuery, state: FSMContext):
-    cat_id = int(c.data.split("_")[1]); cid = c.from_user.id; did = get_linked_driver(cid); active_srv = get_driver_active_services(did)
-    btns = [[InlineKeyboardButton(text=f"{val['name']} — {val['price']}₽", callback_data=f"srv_{key}")] for key, val in CRAZY_SERVICES.items() if val['cat'] == cat_id and key in active_srv]
+    data = await state.get_data(); is_showcase = data.get('showcase', False)
+    cat_id = int(c.data.split("_")[1])
+    
+    if is_showcase:
+        # В витрине показываем ВСЕ услуги (так как не знаем водителя)
+        btns = [[InlineKeyboardButton(text=f"{val['name']} — {val['price']}₽", callback_data=f"srv_{key}")] for key, val in CRAZY_SERVICES.items() if val['cat'] == cat_id]
+    else:
+        # В боевом режиме - только активные у водителя
+        cid = c.from_user.id; did = get_linked_driver(cid); active_srv = get_driver_active_services(did)
+        btns = [[InlineKeyboardButton(text=f"{val['name']} — {val['price']}₽", callback_data=f"srv_{key}")] for key, val in CRAZY_SERVICES.items() if val['cat'] == cat_id and key in active_srv]
+    
     btns.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_cats")])
     await c.message.edit_text(f"📂 <b>{CATEGORIES[cat_id]}</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
 
 @dp.callback_query(F.data == "back_cats")
-async def back_cats(c: types.CallbackQuery, state: FSMContext): await show_cats(c.message, state)
+async def back_cats(c: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    if data.get('showcase'): await start_showcase(c, state)
+    else: 
+        # Костыль: вызываем логику show_cats без сообщения
+        did = get_linked_driver(c.from_user.id); active_srv = get_driver_active_services(did)
+        btns = [[InlineKeyboardButton(text=n, callback_data=f"cat_{i}")] for i, n in CATEGORIES.items() if any(s['cat']==i and k in active_srv for k, s in CRAZY_SERVICES.items())]
+        await c.message.edit_text("🔥 <b>ВЫБЕРИТЕ ЖАНР:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
 
 @dp.callback_query(F.data.startswith("srv_"))
 async def sel_srv(c: types.CallbackQuery, state: FSMContext):
     key = c.data.split("_")[1]; srv = CRAZY_SERVICES[key]
+    data = await state.get_data(); is_showcase = data.get('showcase', False)
+    
+    btn_text = "🔒 ДОСТУПНО В ПОЕЗДКЕ" if is_showcase else "✅ ЗАКАЗАТЬ ШОУ"
+    cb_data = "alert_showcase" if is_showcase else f"do_{key}"
+    
     await c.message.edit_text(f"🎭 <b>{srv['name']}</b>\n💰 {srv['price']}₽\n<i>{srv['desc']}</i>", 
-                              reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ЗАКАЗАТЬ ШОУ", callback_data=f"do_{key}")], [InlineKeyboardButton(text="🔙", callback_data=f"cat_{srv['cat']}")]]))
+                              reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text, callback_data=cb_data)], [InlineKeyboardButton(text="🔙", callback_data=f"cat_{srv['cat']}")]]))
+
+@dp.callback_query(F.data == "alert_showcase")
+async def alert_showcase(c: types.CallbackQuery):
+    await c.answer("🚫 Это демо-режим! Чтобы заказать, сядьте в машину к Артисту и введите его код.", show_alert=True)
 
 @dp.callback_query(F.data.startswith("do_"))
 async def do_ord(c: types.CallbackQuery, state: FSMContext):
@@ -684,8 +724,6 @@ async def brd_s(m: types.Message, s: FSMContext):
 # ==========================================
 # 🔐 ВВОД КЛЮЧА
 # ==========================================
-@dp.message(F.text == "🔐 Ввести КЛЮЧ услуги")
-async def key_st(m: types.Message, s: FSMContext): await s.clear(); await m.answer("Введите код Артиста:"); await s.set_state(UnlockMenu.waiting_for_key)
 @dp.message(UnlockMenu.waiting_for_key)
 async def key_pr(m: types.Message, s: FSMContext):
     drv = get_driver_by_code(m.text.strip().upper())
