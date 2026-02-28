@@ -214,7 +214,6 @@ def delete_custom_service(service_id):
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("DELETE FROM custom_services WHERE id=?", (service_id,))
 
-# !!! ВОССТАНОВЛЕННАЯ ФУНКЦИЯ !!!
 def is_admin(user_id):
     if user_id in SUPER_ADMINS: return True
     with sqlite3.connect(DB_PATH) as conn:
@@ -255,12 +254,18 @@ def update_order_rating(rating, driver_id):
 def check_and_reset_promo(driver_id):
     info = get_driver_info(driver_id)
     if info and info[12]: 
-        end_date = datetime.strptime(info[12], "%Y-%m-%d %H:%M:%S")
-        if datetime.now() > end_date:
-            with sqlite3.connect(DB_PATH) as conn:
-                ref_count = conn.execute("SELECT COUNT(*) FROM drivers WHERE referred_by=?", (driver_id,)).fetchone()[0]
-                new_comm = max(MIN_COMMISSION, DEFAULT_COMMISSION - ref_count)
-                conn.execute("UPDATE drivers SET commission = ?, promo_end_date = NULL WHERE user_id = ?", (new_comm, driver_id))
+        try:
+            # FIX: Обрезаем микросекунды, если они есть
+            date_str = info[12].split('.')[0]
+            end_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+            
+            if datetime.now() > end_date:
+                with sqlite3.connect(DB_PATH) as conn:
+                    ref_count = conn.execute("SELECT COUNT(*) FROM drivers WHERE referred_by=?", (driver_id,)).fetchone()[0]
+                    new_comm = max(MIN_COMMISSION, DEFAULT_COMMISSION - ref_count)
+                    conn.execute("UPDATE drivers SET commission = ?, promo_end_date = NULL WHERE user_id = ?", (new_comm, driver_id))
+        except Exception as e:
+            logging.error(f"Date error: {e}")
 
 def add_commission(driver_id, amount):
     check_and_reset_promo(driver_id)
@@ -365,7 +370,7 @@ async def cab(message: types.Message, state: FSMContext):
     if not i: return await message.answer("❌ Нет регистрации. /drive")
     
     check_and_reset_promo(message.from_user.id)
-    i = get_driver_info(message.from_user.id) 
+    i = get_driver_info(message.from_user.id) # Re-fetch
     
     active_cid = None
     for cid, o in active_orders.items():
