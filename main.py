@@ -41,52 +41,48 @@ dp = Dispatcher(storage=storage)
 active_orders = {} 
 
 # ==========================================
-# 📜 2. КОНТЕНТ (ПОЛНЫЙ И ПРАВИЛЬНЫЙ)
+# 📜 2. КОНТЕНТ
 # ==========================================
 LEGAL_TEXT = (
-    "<b>📜 ПУБЛИЧНАЯ ОФЕРТА (AGENCY AGREEMENT)</b>\n\n"
-    "1. <b>Суть сервиса:</b> Бот является агрегатором развлекательных услуг (Event-агентство). Мы помогаем найти Артистов (аниматоров) для создания настроения.\n"
-    "2. <b>Транспорт:</b> Сервис НЕ оказывает транспортные услуги. Автомобиль является «подвижной декорацией» для проведения шоу. Перемещение осуществляется Артистом, имеющим соответствующие права, в рамках его личной ответственности или лицензии.\n"
-    "3. <b>Оплата:</b> Вы платите за творческую программу (перформанс), общество Артиста и атмосферу.\n"
-    "4. <b>Безопасность:</b> Артист вправе прекратить шоу, если Зритель угрожает безопасности движения.\n"
-    "5. <b>Согласие:</b> Нажимая «Найти Артиста», вы нанимаете исполнителя для развлечения, а не службу такси."
+    "<b>📜 ПУБЛИЧНАЯ ОФЕРТА</b>\n\n"
+    "1. <b>Суть:</b> Агрегатор развлекательных услуг.\n"
+    "2. <b>Роли:</b> Водитель — Артист, Пассажир — Зритель.\n"
+    "3. <b>Безопасность:</b> Соблюдайте ПДД и УК РФ.\n"
+    "4. <b>Финансы:</b> Оплата — это донат за шоу."
 )
 
 WELCOME_TEXT = (
-    "🎭 <b>ДОБРО ПОЖАЛОВАТЬ В ТЕАТР НА КОЛЕСАХ!</b>\n\n"
-    "Скучно ехать в тишине? Надоели таксисты, которые просто молчат?\n"
-    "Здесь ты заказываешь не поездку, а <b>ЭМОЦИЮ</b>.\n\n"
-    "🔥 <b>В нашем репертуаре:</b>\n"
-    "• Водитель-Психолог (выслушает и даст совет)\n"
-    "• Танцы на капоте (взбодрит на светофоре)\n"
-    "• Ограбление (понарошку, адреналин)\n"
-    "• И многое другое...\n\n"
-    "⚖️ <i>Генеральный спонсор безумия — <a href='https://t.me/Ai_advokatrobot'>Робот-Адвокат</a>. Он вытащит, если вечеринка зайдет слишком далеко.</i>\n\n"
-    "<b>Готовы подписать контракт с хаосом?</b> 👇"
+    "🎪 <b>ДОБРО ПОЖАЛОВАТЬ В ТЕАТР НА КОЛЕСАХ!</b>\n\n"
+    "Здесь ты платишь не за километры, а за <b>ЭМОЦИИ</b>.\n\n"
+    "🎭 <b>В меню:</b>\n"
+    "• Психология на ходу\n"
+    "• Танцы на светофорах\n"
+    "• Сжигание авто (дорого)\n\n"
+    "⚖️ <i>Крыша — <a href='https://t.me/Ai_advokatrobot'>Робот-Адвокат</a>.</i>\n\n"
+    "<b>Погнали?</b> 👇"
 )
 
-# ПОЛНЫЕ ОПИСАНИЯ УСЛУГ
 CRAZY_SERVICES = {
-    "candy": {"cat": 1, "price": 0, "name": "🍬 Презент", "desc": "Водитель с максимально серьезным лицом (как на государственных похоронах) вручает вам элитную барбариску. Это знак глубочайшего уважения и начала крепкой дружбы."},
-    "nose": {"cat": 1, "price": 300, "name": "👃 Палец в носу", "desc": "Всю поездку (или до первого поста ГАИ) водитель едет с пальцем в носу. Вы платите за его моральные страдания, потерю авторитета и ваш истерический смех."},
-    "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Водитель выходит, картинно открывает вам дверь, кланяется в пояс и называет вас 'Сир' или 'Миледи'. Чувство превосходства включено в стоимость."},
-    "joke": {"cat": 1, "price": 50, "name": "🤡 Тупой анекдот", "desc": "Анекдот категории 'Б' из золотой коллекции таксиста 90-х. Смеяться не обязательно, но желательно, чтобы не обидеть тонкую творческую натуру водителя."},
-    "silence": {"cat": 1, "price": 150, "name": "🤐 Полная тишина", "desc": "Режим 'Ниндзя'. Музыка выключается, водитель молчит как рыба. Даже если вы спросите дорогу — он ответит языком жестов. Идеально для интровертов."},
-    "granny": {"cat": 2, "price": 800, "name": "👵 Бабушка-ворчунья", "desc": "Ролевая игра. Всю дорогу водитель будет бубнить: 'Куда прешь, наркоман?', 'Шапку надень!', 'Вот в наше время такси стоило копейку!'. Полное погружение в детство."},
-    "gopnik": {"cat": 2, "price": 500, "name": "🍺 Четкий пацанчик", "desc": "Едем под пацанский рэп, водитель сидит на корточках (шутка, за рулем), называет вас 'Братишка', лузгает семечки и решает вопросики по телефону."},
-    "guide": {"cat": 2, "price": 600, "name": "🗣 Ужасный гид", "desc": "Водитель проводит экскурсию, на ходу выдумывая факты. 'Вот этот ларек построил Иван Грозный лично'. Чем бредовее факты, тем лучше."},
-    "psych": {"cat": 2, "price": 1000, "name": "🧠 Психолог", "desc": "Вы жалуетесь на жизнь, бывших и начальника. Водитель кивает, говорит 'Угу', вздыхает и дает житейские советы уровня Ошо."},
-    "spy": {"cat": 3, "price": 2000, "name": "🕵️‍♂️ Шпион 007", "desc": "Черные очки, паранойя. Водитель постоянно проверяет 'хвост', говорит по рации кодами ('Орел в гнезде') и прячет лицо от камер."},
-    "karaoke": {"cat": 3, "price": 5000, "name": "🎤 Адское Караоке", "desc": "Врубаем 'Рюмку водки' или 'Знаешь ли ты' на полную! Водитель орет песни вместе с вами. Фальшиво, громко, но очень душевно."},
-    "dance": {"cat": 3, "price": 15000, "name": "💃 Танцы на капоте", "desc": "На красном свете водитель выбегает из машины и танцует макарену или лезгинку перед капотом. Прохожие снимают, вам стыдно, всем весело!"},
-    "kidnap": {"cat": 4, "price": 30000, "name": "🎭 Дружеское похищение", "desc": "Вас (понарошку, но реалистично) грузят в багажник (или на заднее), надевают мешок на голову и везут в лес... пить элитный чай с баранками."},
-    "tarzan": {"cat": 4, "price": 50000, "name": "🦍 Тарзан-Шоу", "desc": "Водитель бьет себя в грудь, издает гортанные звуки, рычит на прохожих и называет другие машины 'железными буйволами'. Санитары уже выехали."},
-    "burn": {"cat": 4, "price": 1000000, "name": "🔥 Сжечь машину", "desc": "Финальный аккорд. Едем на пустырь. Вы платите миллион, я даю канистру. Гори оно всё синим пламенем. (Машина реальная, шоу реальное)."},
-    "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Водитель сделает изысканный, поэтичный комплимент вашим глазам. Возможно, сравнит их с звездами или фарами ксенона."},
-    "smile": {"cat": 5, "price": 0, "name": "😁 Улыбка Джоконды", "desc": "Водитель скажет, что ваша улыбка освещает этот старый, пыльный салон лучше, чем аварийка в ночи."},
-    "style": {"cat": 5, "price": 0, "name": "👠 Икона стиля", "desc": "Восхищение вашим образом. Водитель поинтересуется, не едете ли вы случайно с показа мод в Париже."},
-    "improv": {"cat": 5, "price": 0, "name": "✨ Импровизация", "desc": "Водитель сам найдет, что в вас похвалить. Рискованно, но приятно. Полный фристайл и галантность."},
-    "propose": {"cat": 5, "price": 1000, "name": "💍 Сделать предложение", "desc": "Вы делаете предложение руки, сердца или ипотеки водителю. Шанс 50/50. ⚠️ ПРИ ОТКАЗЕ 1000₽ НЕ ВОЗВРАЩАЮТСЯ!"}
+    "candy": {"cat": 1, "price": 0, "name": "🍬 Презент", "desc": "Вручение конфеты с пафосным лицом."},
+    "nose": {"cat": 1, "price": 300, "name": "👃 Палец в носу", "desc": "Всю поездку водитель ковыряет в носу."},
+    "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Открываем дверь, называем 'Сир'."},
+    "joke": {"cat": 1, "price": 50, "name": "🤡 Анекдот", "desc": "Тупая шутка. Смеяться обязательно."},
+    "silence": {"cat": 1, "price": 150, "name": "🤐 Ниндзя", "desc": "Полная тишина."},
+    "granny": {"cat": 2, "price": 800, "name": "👵 Бабуля", "desc": "Ворчание: 'Наркоманы!', 'Шапку надень!'."},
+    "gopnik": {"cat": 2, "price": 500, "name": "🍺 Пацанчик", "desc": "Рэпчик, семки, вопросики."},
+    "guide": {"cat": 2, "price": 600, "name": "🗣 Горе-Гид", "desc": "Выдуманные факты о городе."},
+    "psych": {"cat": 2, "price": 1000, "name": "🧠 Психолог", "desc": "Слушаем нытье, даем советы."},
+    "spy": {"cat": 3, "price": 2000, "name": "🕵️‍♂️ 007", "desc": "Паранойя, проверка хвоста."},
+    "karaoke": {"cat": 3, "price": 5000, "name": "🎤 Караоке", "desc": "Орем песни дуэтом."},
+    "dance": {"cat": 3, "price": 15000, "name": "💃 Танцы", "desc": "Макарена на капоте."},
+    "kidnap": {"cat": 4, "price": 30000, "name": "🎭 Похищение", "desc": "В лес (понарошку)."},
+    "tarzan": {"cat": 4, "price": 50000, "name": "🦍 Тарзан", "desc": "Рычим на прохожих."},
+    "burn": {"cat": 4, "price": 1000000, "name": "🔥 Сжечь авто", "desc": "Едем на пустырь и сжигаем тачку."},
+    "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Комплимент глазам."},
+    "smile": {"cat": 5, "price": 0, "name": "😁 Улыбка", "desc": "Комплимент улыбке."},
+    "style": {"cat": 5, "price": 0, "name": "👠 Стиль", "desc": "Восхищение одеждой."},
+    "improv": {"cat": 5, "price": 0, "name": "✨ Импровизация", "desc": "Артист импровизирует."},
+    "propose": {"cat": 5, "price": 1000, "name": "💍 Предложение", "desc": "Предложение руки и сердца."}
 }
 
 CATEGORIES = {1: "🟢 ЛАЙТ", 2: "🟡 МЕДИУМ", 3: "🔴 ХАРД", 4: "☠️ VIP БЕЗУМИЕ", 5: "🌹 ДЛЯ ДАМ"}
@@ -156,143 +152,124 @@ def generate_vip_code(name):
     return f"VIP-{name.split()[0].upper()}-{suffix}"
 
 def is_client_accepted(user_id):
-    conn = sqlite3.connect(DB_PATH)
-    res = conn.execute("SELECT 1 FROM clients WHERE user_id = ?", (user_id,)).fetchone()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        res = conn.execute("SELECT 1 FROM clients WHERE user_id = ?", (user_id,)).fetchone()
     return bool(res)
 
 def get_client_stats(user_id):
-    conn = sqlite3.connect(DB_PATH)
-    res = conn.execute("SELECT total_spent, trips_count, vip_unlocked FROM clients WHERE user_id=?", (user_id,)).fetchone()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        res = conn.execute("SELECT total_spent, trips_count, vip_unlocked FROM clients WHERE user_id=?", (user_id,)).fetchone()
     return res if res else (0, 0, 0)
 
 def unlock_vip_for_client(client_id):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("UPDATE clients SET vip_unlocked = 1 WHERE user_id=?", (client_id,))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("UPDATE clients SET vip_unlocked = 1 WHERE user_id=?", (client_id,))
 
 def update_client_after_trip(user_id, amount):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("UPDATE clients SET total_spent = total_spent + ?, trips_count = trips_count + 1 WHERE user_id=?", (amount, user_id))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("UPDATE clients SET total_spent = total_spent + ?, trips_count = trips_count + 1 WHERE user_id=?", (amount, user_id))
 
 def get_status_name(spent, trips, vip_unlocked):
     if vip_unlocked: return "👹 МЕЦЕНАТ ХАОСА (VIP)"
-    if trips >= VIP_LIMIT: return "💀 ВЕТЕРАН БЕЗУМИЯ"
+    if trips >= VIP_LIMIT: return "💀 ВЕТЕРАН"
     if trips > 3: return "🤪 ЦЕНИТЕЛЬ"
     return "👶 ЗРИТЕЛЬ"
 
 def get_driver_menu(driver_id):
-    conn = sqlite3.connect(DB_PATH)
-    active_keys = [r[0] for r in conn.execute("SELECT service_key FROM driver_services WHERE driver_id=? AND is_active=1", (driver_id,)).fetchall()]
-    customs = conn.execute("SELECT id, category_id, name, description, price FROM custom_services WHERE driver_id=?", (driver_id,)).fetchall()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        active_keys = [r[0] for r in conn.execute("SELECT service_key FROM driver_services WHERE driver_id=? AND is_active=1", (driver_id,)).fetchall()]
+        customs = conn.execute("SELECT id, category_id, name, description, price FROM custom_services WHERE driver_id=?", (driver_id,)).fetchall()
     return active_keys, customs
 
 def get_driver_info(user_id):
-    conn = sqlite3.connect(DB_PATH)
-    res = conn.execute("SELECT username, car_info, payment_info, balance, status, access_code, role, fio, rating_sum, rating_count, vip_code, commission, promo_end_date FROM drivers WHERE user_id=?", (user_id,)).fetchone()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        res = conn.execute("SELECT username, car_info, payment_info, balance, status, access_code, role, fio, rating_sum, rating_count, vip_code, commission, promo_end_date FROM drivers WHERE user_id=?", (user_id,)).fetchone()
     return res
 
 def get_linked_driver(client_id):
-    conn = sqlite3.connect(DB_PATH)
-    res = conn.execute("SELECT linked_driver_id FROM clients WHERE user_id=?", (client_id,)).fetchone()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        res = conn.execute("SELECT linked_driver_id FROM clients WHERE user_id=?", (client_id,)).fetchone()
     return res[0] if res and res[0] else None
 
 def set_linked_driver(client_id, driver_id):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("INSERT OR REPLACE INTO clients (user_id, linked_driver_id, total_spent, trips_count, vip_unlocked) VALUES (?, ?, (SELECT total_spent FROM clients WHERE user_id=?), (SELECT trips_count FROM clients WHERE user_id=?), (SELECT vip_unlocked FROM clients WHERE user_id=?))", (client_id, driver_id, client_id, client_id, client_id))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("INSERT OR REPLACE INTO clients (user_id, linked_driver_id, total_spent, trips_count, vip_unlocked) VALUES (?, ?, (SELECT total_spent FROM clients WHERE user_id=?), (SELECT trips_count FROM clients WHERE user_id=?), (SELECT vip_unlocked FROM clients WHERE user_id=?))", (client_id, driver_id, client_id, client_id, client_id))
 
 def unlink_client(client_id):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("UPDATE clients SET linked_driver_id = NULL WHERE user_id=?", (client_id,))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("UPDATE clients SET linked_driver_id = NULL WHERE user_id=?", (client_id,))
 
 def init_driver_services_defaults(driver_id):
-    conn = sqlite3.connect(DB_PATH)
-    for k in CRAZY_SERVICES:
-        conn.execute("INSERT OR IGNORE INTO driver_services (driver_id, service_key, is_active) VALUES (?, ?, 1)", (driver_id, k))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        for k in CRAZY_SERVICES:
+            conn.execute("INSERT OR IGNORE INTO driver_services (driver_id, service_key, is_active) VALUES (?, ?, 1)", (driver_id, k))
 
 def toggle_driver_service(driver_id, service_key):
-    conn = sqlite3.connect(DB_PATH)
-    curr = conn.execute("SELECT is_active FROM driver_services WHERE driver_id=? AND service_key=?", (driver_id, service_key)).fetchone()
-    new_status = 0 if (curr and curr[0] == 1) else 1
-    conn.execute("INSERT OR REPLACE INTO driver_services (driver_id, service_key, is_active) VALUES (?, ?, ?)", (driver_id, service_key, new_status))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        curr = conn.execute("SELECT is_active FROM driver_services WHERE driver_id=? AND service_key=?", (driver_id, service_key)).fetchone()
+        new_status = 0 if (curr and curr[0] == 1) else 1
+        conn.execute("INSERT OR REPLACE INTO driver_services (driver_id, service_key, is_active) VALUES (?, ?, ?)", (driver_id, service_key, new_status))
 
 def delete_custom_service(service_id):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("DELETE FROM custom_services WHERE id=?", (service_id,))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("DELETE FROM custom_services WHERE id=?", (service_id,))
+
+# !!! ВОССТАНОВЛЕННАЯ ФУНКЦИЯ !!!
+def is_admin(user_id):
+    if user_id in SUPER_ADMINS: return True
+    with sqlite3.connect(DB_PATH) as conn:
+        res = conn.execute("SELECT 1 FROM drivers WHERE user_id=? AND role IN ('owner', 'admin') AND status='active'", (user_id,)).fetchone()
+    return bool(res)
 
 def get_all_admins_ids():
-    conn = sqlite3.connect(DB_PATH)
-    res = conn.execute("SELECT user_id FROM drivers WHERE role IN ('owner', 'admin') AND status='active'").fetchall()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        res = conn.execute("SELECT user_id FROM drivers WHERE role IN ('owner', 'admin') AND status='active'").fetchall()
     return list(set([r[0] for r in res] + SUPER_ADMINS))
 
 def get_active_drivers():
-    conn = sqlite3.connect(DB_PATH)
-    res = [d[0] for d in conn.execute("SELECT user_id FROM drivers WHERE status='active'").fetchall()]
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        res = [d[0] for d in conn.execute("SELECT user_id FROM drivers WHERE status='active'").fetchall()]
+    return res
+
+def get_driver_by_code(code):
+    with sqlite3.connect(DB_PATH) as conn:
+        res = conn.execute("SELECT user_id, username, car_info, fio FROM drivers WHERE access_code=? AND status='active'", (code,)).fetchone()
     return res
 
 def update_driver_field(user_id, field, value):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute(f"UPDATE drivers SET {field} = ? WHERE user_id = ?", (value, user_id))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(f"UPDATE drivers SET {field} = ? WHERE user_id = ?", (value, user_id))
 
 def extract_price(text):
     nums = re.findall(r'\d+', str(text))
     return int("".join(nums)) if nums else 0
 
 def log_order(client_id, driver_id, service_name, price):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("INSERT INTO order_history (client_id, driver_id, service_name, price) VALUES (?, ?, ?, ?)", (client_id, driver_id, service_name, price))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("INSERT INTO order_history (client_id, driver_id, service_name, price) VALUES (?, ?, ?, ?)", (client_id, driver_id, service_name, price))
 
 def update_order_rating(rating, driver_id):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("UPDATE drivers SET rating_sum = rating_sum + ?, rating_count = rating_count + 1 WHERE user_id = ?", (rating, driver_id))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("UPDATE drivers SET rating_sum = rating_sum + ?, rating_count = rating_count + 1 WHERE user_id = ?", (rating, driver_id))
 
 def check_and_reset_promo(driver_id):
     info = get_driver_info(driver_id)
-    if info and info[12]: # promo_end_date
+    if info and info[12]: 
         end_date = datetime.strptime(info[12], "%Y-%m-%d %H:%M:%S")
         if datetime.now() > end_date:
-            conn = sqlite3.connect(DB_PATH)
-            ref_count = conn.execute("SELECT COUNT(*) FROM drivers WHERE referred_by=?", (driver_id,)).fetchone()[0]
-            new_comm = max(MIN_COMMISSION, DEFAULT_COMMISSION - ref_count)
-            conn.execute("UPDATE drivers SET commission = ?, promo_end_date = NULL WHERE user_id = ?", (new_comm, driver_id))
-            conn.commit()
-            conn.close()
+            with sqlite3.connect(DB_PATH) as conn:
+                ref_count = conn.execute("SELECT COUNT(*) FROM drivers WHERE referred_by=?", (driver_id,)).fetchone()[0]
+                new_comm = max(MIN_COMMISSION, DEFAULT_COMMISSION - ref_count)
+                conn.execute("UPDATE drivers SET commission = ?, promo_end_date = NULL WHERE user_id = ?", (new_comm, driver_id))
 
 def add_commission(driver_id, amount):
     check_and_reset_promo(driver_id)
     if is_admin(driver_id): return 
-    conn = sqlite3.connect(DB_PATH)
-    row = conn.execute("SELECT commission FROM drivers WHERE user_id=?", (driver_id,)).fetchone()
-    percent = row[0] if row else 10
-    val = int(amount * (percent / 100))
-    conn.execute("UPDATE drivers SET balance = balance + ? WHERE user_id=?", (val, driver_id))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute("SELECT commission FROM drivers WHERE user_id=?", (driver_id,)).fetchone()
+        percent = row[0] if row else 10
+        val = int(amount * (percent / 100))
+        conn.execute("UPDATE drivers SET balance = balance + ? WHERE user_id=?", (val, driver_id))
 
 async def safe_send_message(chat_id, text, reply_markup=None):
     try: await bot.send_message(chat_id, text, reply_markup=reply_markup); return True
@@ -388,7 +365,7 @@ async def cab(message: types.Message, state: FSMContext):
     if not i: return await message.answer("❌ Нет регистрации. /drive")
     
     check_and_reset_promo(message.from_user.id)
-    i = get_driver_info(message.from_user.id) # Re-fetch
+    i = get_driver_info(message.from_user.id) 
     
     active_cid = None
     for cid, o in active_orders.items():
