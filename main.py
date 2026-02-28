@@ -42,7 +42,7 @@ active_orders = {}
 LEGAL_TEXT = (
     "<b>📜 ПУБЛИЧНАЯ ОФЕРТА</b>\n\n"
     "1. <b>Суть:</b> Мы — агрегатор поиска творческих попутчиков (Артистов).\n"
-    "2. <b>Транспорт:</b> Перевозка — дело Артиста и его лицензии. Мы продаем шоу.\n"
+    "2. <b>Транспорт:</b> Перевозка — дело Артиста. Мы продаем шоу.\n"
     "3. <b>Безопасность:</b> Не мешайте водителю вести машину.\n"
 )
 
@@ -99,17 +99,13 @@ def init_db():
     cursor.execute("CREATE TABLE IF NOT EXISTS order_history (id INTEGER PRIMARY KEY AUTOINCREMENT, client_id INTEGER, driver_id INTEGER, service_name TEXT, price INTEGER, rating INTEGER DEFAULT 0, date TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
     
     for admin_id in SUPER_ADMINS:
-        # Пытаемся вставить админа, если занято - обновляем
         try:
             cursor.execute("INSERT OR IGNORE INTO drivers (user_id, username, fio, car_info, payment_info, access_code, status, role) VALUES (?, 'BOSS', 'Владелец', 'VIP', 'CASH', ?, 'active', 'owner')", (admin_id, f"ADMIN_{admin_id}"))
-            # Если запись была (IGNORE сработал), форсируем права
             cursor.execute("UPDATE drivers SET role='owner', status='active' WHERE user_id=?", (admin_id,))
             for key in CRAZY_SERVICES:
                 cursor.execute("INSERT OR REPLACE INTO driver_services (driver_id, service_key, is_active) VALUES (?, ?, 1)", (admin_id, key))
         except: pass
-            
-    conn.commit()
-    conn.close()
+    conn.commit(); conn.close()
 
 init_db()
 
@@ -117,25 +113,20 @@ init_db()
 # 🛠 ФУНКЦИИ
 # ==========================================
 def is_client_accepted(user_id):
-    conn = sqlite3.connect(DB_PATH)
-    res = conn.execute("SELECT 1 FROM clients WHERE user_id = ?", (user_id,)).fetchone()
-    conn.close()
+    conn = sqlite3.connect(DB_PATH); res = conn.execute("SELECT 1 FROM clients WHERE user_id = ?", (user_id,)).fetchone(); conn.close()
     return bool(res)
 
 def get_client_stats(user_id):
-    conn = sqlite3.connect(DB_PATH)
-    res = conn.execute("SELECT total_spent FROM clients WHERE user_id=?", (user_id,)).fetchone()
-    conn.close()
+    conn = sqlite3.connect(DB_PATH); res = conn.execute("SELECT total_spent FROM clients WHERE user_id=?", (user_id,)).fetchone(); conn.close()
     return res[0] if res else 0
 
 def update_client_spent(user_id, amount):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("UPDATE clients SET total_spent = total_spent + ? WHERE user_id=?", (amount, user_id)); conn.commit(); conn.close()
+    conn = sqlite3.connect(DB_PATH); conn.execute("UPDATE clients SET total_spent = total_spent + ? WHERE user_id=?", (amount, user_id)); conn.commit(); conn.close()
 
 def get_status_name(spent):
-    if spent > 100000: return "👹 МЕЦЕНАТ"
-    if spent > 50000: return "💀 ПРОДЮСЕР"
-    if spent > 10000: return "🤪 ЦЕНИТЕЛЬ"
+    if spent > 100000: return "👹 МЕЦЕНАТ"; 
+    if spent > 50000: return "💀 ПРОДЮСЕР"; 
+    if spent > 10000: return "🤪 ЦЕНИТЕЛЬ"; 
     return "👶 ЗРИТЕЛЬ"
 
 def init_driver_services_defaults(driver_id):
@@ -148,8 +139,7 @@ def get_driver_active_services(driver_id):
     return [r[0] for r in res]
 
 def toggle_driver_service(driver_id, service_key):
-    conn = sqlite3.connect(DB_PATH)
-    curr = conn.execute("SELECT is_active FROM driver_services WHERE driver_id=? AND service_key=?", (driver_id, service_key)).fetchone()
+    conn = sqlite3.connect(DB_PATH); curr = conn.execute("SELECT is_active FROM driver_services WHERE driver_id=? AND service_key=?", (driver_id, service_key)).fetchone()
     new_status = 0 if (curr and curr[0] == 1) else 1
     conn.execute("INSERT OR REPLACE INTO driver_services (driver_id, service_key, is_active) VALUES (?, ?, ?)", (driver_id, service_key, new_status)); conn.commit(); conn.close()
 
@@ -185,7 +175,7 @@ def extract_price(text):
     nums = re.findall(r'\d+', str(text)); return int("".join(nums)) if nums else 0
 
 def log_order(client_id, driver_id, service_name, price):
-    conn = sqlite3.connect(DB_PATH); cursor = conn.cursor(); cursor.execute("INSERT INTO order_history (client_id, driver_id, service_name, price) VALUES (?, ?, ?, ?)", (client_id, driver_id, service_name, price)); last_id = cursor.lastrowid; conn.commit(); conn.close(); return last_id
+    conn = sqlite3.connect(DB_PATH); cursor = conn.cursor(); cursor.execute("INSERT INTO order_history (client_id, driver_id, service_name, price) VALUES (?, ?, ?, ?)", (client_id, driver_id, service_name, price)); conn.commit(); conn.close()
 
 def update_order_rating(rating, driver_id):
     conn = sqlite3.connect(DB_PATH); conn.execute("UPDATE drivers SET rating_sum = rating_sum + ?, rating_count = rating_count + 1 WHERE user_id = ?", (rating, driver_id)); conn.commit(); conn.close()
@@ -318,7 +308,6 @@ async def t_ok(c: types.CallbackQuery, state: FSMContext):
     if not o or o["status"] != "pending": return await c.answer("Занято")
     o["status"] = "accepted"; o["driver_id"] = did; set_linked_driver(cid, did)
     info = get_driver_info(did)
-    # Админам
     for aid, mid in o.get('admin_msg_ids', {}).items():
         try: await bot.edit_message_text(chat_id=aid, message_id=mid, text=f"🚫 ВЗЯЛ: {info[0]}", reply_markup=None)
         except: pass
@@ -331,7 +320,8 @@ async def t_ok(c: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data.startswith("cli_pay_"))
 async def cli_pay(c: types.CallbackQuery):
     did = active_orders[int(c.data.split("_")[2])]['driver_id']
-    await bot.send_message(did, "💸 Клиент оплатил!", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅", callback_data=f"drv_confirm_{c.data.split('_')[2]}")] جوړونکيawait c.message.edit_text("⏳")
+    await bot.send_message(did, "💸 Клиент оплатил!", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅", callback_data=f"drv_confirm_{c.data.split('_')[2]}")] ])) # <-- ИСПРАВЛЕНО
+    await c.message.edit_text("⏳")
 
 @dp.callback_query(F.data.startswith("drv_confirm_"))
 async def drv_con(c: types.CallbackQuery): await bot.send_message(int(c.data.split("_")[2]), "✅ Оплата принята"); await c.message.edit_text("✅")
@@ -437,7 +427,6 @@ async def reg_p(m: types.Message, s: FSMContext): await s.update_data(pay=m.text
 @dp.message(DriverRegistration.waiting_for_code)
 async def reg_fin(m: types.Message, s: FSMContext):
     code = m.text.upper().strip()
-    # ПРОВЕРКА КОДА
     conn = sqlite3.connect(DB_PATH)
     exist = conn.execute("SELECT 1 FROM drivers WHERE access_code=?", (code,)).fetchone()
     if exist: 
@@ -445,7 +434,7 @@ async def reg_fin(m: types.Message, s: FSMContext):
         return await m.answer("❌ Код занят! Придумайте другой.")
     
     d = await s.get_data()
-    # INSERT OR REPLACE для надежности
+    # Фикс уникальности: REPLACE
     conn.execute("INSERT OR REPLACE INTO drivers (user_id, username, fio, car_info, payment_info, access_code, status, role) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'driver')", 
                  (m.from_user.id, m.from_user.username or "U", d['fio'], d['car'], d['pay'], code))
     conn.commit()
@@ -454,7 +443,6 @@ async def reg_fin(m: types.Message, s: FSMContext):
     init_driver_services_defaults(m.from_user.id)
     await m.answer("✅ Заявка отправлена!")
     
-    # Уведомление админам
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ПРИНЯТЬ", callback_data=f"adm_app_{m.from_user.id}")]])
     for adm in get_all_admins_ids():
         await safe_send_message(adm, f"🚨 <b>НОВЫЙ:</b> {d['fio']}", kb)
