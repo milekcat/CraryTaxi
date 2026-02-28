@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import sqlite3
+import re
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -62,7 +63,7 @@ CRAZY_SERVICES = {
     "dance": {"cat": 3, "price": 15000, "name": "💃 Танцы на капоте", "desc": "На красном свете водитель выбегает из машины и танцует макарену или лезгинку перед капотом. Прохожие снимают, вам стыдно, всем весело!"},
     "kidnap": {"cat": 4, "price": 30000, "name": "🎭 Дружеское похищение", "desc": "Вас (понарошку, но реалистично) грузят в багажник (или на заднее), надевают мешок на голову и везут в лес... пить элитный чай с баранками."},
     "tarzan": {"cat": 4, "price": 50000, "name": "🦍 Тарзан-Шоу", "desc": "Водитель бьет себя в грудь, издает гортанные звуки, рычит на прохожих и называет другие машины 'железными буйволами'. Санитары уже выехали."},
-    "burn": {"cat": 4, "price": 1000000, "name": "🔥 Сжечь машину", "desc": "Финальный аккорд. Едем на пустырь. Вы платите миллион, я даю канистру. Гори оно всё синим пламенем. (Машина реальная, шоу реальное)."},
+    "burn": {"cat": 4, "price": 1000000, "name": "🔥 Сжечь машину", "desc": "Финальный аккорд. Едем на пустырь. Вы платите миллион, я даю канистру. Гори оно всё огнем. Эпичный финал."},
     "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Водитель сделает изысканный, поэтичный комплимент вашим глазам. Возможно, сравнит их с звездами или фарами ксенона."},
     "smile": {"cat": 5, "price": 0, "name": "😁 Улыбка Джоконды", "desc": "Водитель скажет, что ваша улыбка освещает этот старый, пыльный салон лучше, чем аварийка в ночи."},
     "style": {"cat": 5, "price": 0, "name": "👠 Икона стиля", "desc": "Восхищение вашим образом. Водитель поинтересуется, не едете ли вы случайно с показа мод в Париже."},
@@ -143,7 +144,7 @@ def init_db():
 init_db()
 
 # ==========================================
-# 🛠 УТИЛИТЫ
+# 🛠 УТИЛИТЫ (ВАЖНО: ОНИ ЗДЕСЬ!)
 # ==========================================
 def is_client_accepted(user_id):
     conn = sqlite3.connect(DB_PATH)
@@ -323,7 +324,7 @@ tos_kb = InlineKeyboardMarkup(inline_keyboard=[
 ])
 
 # ==========================================
-# 🛑 ЛОГИКА
+# 🛑 ЛОГИКА СТАРТА
 # ==========================================
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
@@ -496,7 +497,6 @@ async def sos_btn(c: types.CallbackQuery):
 
 @dp.callback_query(F.data.startswith("cli_pay_"))
 async def cli_pay(c: types.CallbackQuery):
-    # !!! ИСПРАВЛЕННАЯ СТРОКА НИЖЕ !!!
     did = active_orders[int(c.data.split("_")[2])]['driver_id']
     await bot.send_message(did, "💸 <b>Клиент сообщил об оплате!</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ПОДТВЕРДИТЬ", callback_data=f"drv_confirm_{c.data.split('_')[2]}")] ]))
     await c.message.edit_text("⏳ Ждем подтверждения Артиста...")
@@ -673,13 +673,14 @@ async def reg_p(m: types.Message, s: FSMContext): await s.update_data(pay=m.text
 async def reg_fin(m: types.Message, s: FSMContext):
     code = m.text.upper().strip()
     conn = sqlite3.connect(DB_PATH)
-    # Check duplicate code
-    exist = conn.execute("SELECT 1 FROM drivers WHERE access_code=?", (code,)).fetchone()
+    # Check duplicate code by someone else
+    exist = conn.execute("SELECT 1 FROM drivers WHERE access_code=? AND user_id != ?", (code, m.from_user.id)).fetchone()
     if exist:
         conn.close()
-        return await m.answer("❌ Код занят!")
+        return await m.answer("❌ Код занят другим Артистом!")
     
     d = await s.get_data()
+    # Правильная регистрация с обновлением
     conn.execute("INSERT OR REPLACE INTO drivers (user_id, username, fio, car_info, payment_info, access_code, status, role) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'driver')", 
                  (m.from_user.id, m.from_user.username or "U", d['fio'], d['car'], d['pay'], code))
     conn.commit()
