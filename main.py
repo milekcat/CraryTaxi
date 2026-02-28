@@ -13,7 +13,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 
 # ==========================================
-# ⚙️ НАСТРОЙКИ
+# ⚙️ НАСТРОЙКИ СИСТЕМЫ
 # ==========================================
 logging.basicConfig(level=logging.INFO)
 
@@ -37,7 +37,7 @@ dp = Dispatcher(storage=storage)
 active_orders = {} 
 
 # ==========================================
-# ⚖️ ЮРИДИЧЕСКАЯ БАЗА
+# 📜 КОНСТАНТЫ И МЕНЮ (ПЕРЕНЕСЕНО НАВЕРХ)
 # ==========================================
 LEGAL_TEXT = (
     "<b>📜 ПУБЛИЧНАЯ ОФЕРТА (AGENCY AGREEMENT)</b>\n\n"
@@ -48,6 +48,30 @@ LEGAL_TEXT = (
     "5. <b>Согласие:</b> Нажимая «Найти Артиста», вы нанимаете исполнителя для развлечения, а не службу такси."
 )
 
+CRAZY_SERVICES = {
+    "candy": {"cat": 1, "price": 0, "name": "🍬 Презент", "desc": "Артист с серьезным лицом вручает вам элитную конфету в знак уважения."},
+    "nose": {"cat": 1, "price": 300, "name": "👃 Перформанс 'Скука'", "desc": "Артист едет с пальцем в носу всю дорогу. Вы платите за его вживание в роль."},
+    "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Вам открывают дверь, кланяются и называют 'Сир'. Почувствуйте себя в Лондоне."},
+    "joke": {"cat": 1, "price": 50, "name": "🤡 Стендап (Мини)", "desc": "Анекдот категории 'Б' из золотой коллекции. Смех не гарантирован, но атмосфера будет."},
+    "silence": {"cat": 1, "price": 150, "name": "🤐 Режим 'Ниндзя'", "desc": "Артист молчит всю дорогу. Даже если вы спросите путь — он ответит жестами."},
+    "granny": {"cat": 2, "price": 800, "name": "👵 Роль 'Бабуля'", "desc": "Иммерсивный театр. Всю дорогу будут ворчать: 'Куда прешь, наркоман!', 'Шапку надень!'."},
+    "gopnik": {"cat": 2, "price": 500, "name": "🍺 Роль 'Пацанчик'", "desc": "Рэпчик, обращение 'братишка', решение вопросиков. Полное погружение в район."},
+    "guide": {"cat": 2, "price": 600, "name": "🗣 Горе-Гид", "desc": "Экскурсия с выдуманными фактами. 'Этот ларек построил Иван Грозный'."},
+    "psych": {"cat": 2, "price": 1000, "name": "🧠 Психолог", "desc": "Вы жалуетесь на жизнь, Артист кивает и дает житейские советы."},
+    "spy": {"cat": 3, "price": 2000, "name": "🕵️‍♂️ Квест '007'", "desc": "Очки, паранойя, проверка хвоста. Мы уходим от погони (понарошку)."},
+    "karaoke": {"cat": 3, "price": 5000, "name": "🎤 Караоке-Баттл", "desc": "Орем песни на полную! Фальшиво, но душевно. Артист подпевает."},
+    "dance": {"cat": 3, "price": 15000, "name": "💃 Танцы", "desc": "Артист выходит и танцует макарену на светофоре. Зрители в восторге."},
+    "kidnap": {"cat": 4, "price": 30000, "name": "🎭 Похищение", "desc": "Розыгрыш. Вас (понарошку) грузят и везут в лес пить чай."},
+    "tarzan": {"cat": 4, "price": 50000, "name": "🦍 Шоу 'Тарзан'", "desc": "Крики, удары в грудь, рычание на прохожих. Санитары не включены."},
+    "burn": {"cat": 4, "price": 1000000, "name": "🔥 Фаер-Шоу (Авто)", "desc": "Едем на пустырь. Вы платите лям, мы сжигаем реквизит (машину). Эпично."},
+    "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Изысканный комплимент вашим глазам."},
+    "smile": {"cat": 5, "price": 0, "name": "😁 Улыбка", "desc": "Комплимент вашей улыбке."},
+    "style": {"cat": 5, "price": 0, "name": "👠 Икона стиля", "desc": "Восхищение вашим образом."},
+    "improv": {"cat": 5, "price": 0, "name": "✨ Импровизация", "desc": "Артист сам найдет, что в вас похвалить. Фристайл."},
+    "propose": {"cat": 5, "price": 1000, "name": "💍 Предложение", "desc": "Вы делаете предложение Артисту. Шанс 50/50. ⚠️ ПРИ ОТКАЗЕ 1000₽ НЕ ВОЗВРАЩАЮТСЯ!"}
+}
+CATEGORIES = {1: "🟢 ЛАЙТ", 2: "🟡 МЕДИУМ", 3: "🔴 ХАРД", 4: "☠️ VIP БЕЗУМИЕ", 5: "🌹 ДЛЯ ДАМ"}
+
 # ==========================================
 # 🗄️ БАЗА ДАННЫХ
 # ==========================================
@@ -57,6 +81,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
+    # 1. Артисты
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS drivers (
             user_id INTEGER PRIMARY KEY,
@@ -73,6 +98,7 @@ def init_db():
             commission INTEGER DEFAULT 10
         )
     """)
+    # 2. Услуги Артистов
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS driver_services (
             driver_id INTEGER,
@@ -81,6 +107,7 @@ def init_db():
             PRIMARY KEY (driver_id, service_key)
         )
     """)
+    # 3. Зрители
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS clients (
             user_id INTEGER PRIMARY KEY,
@@ -88,6 +115,7 @@ def init_db():
             total_spent INTEGER DEFAULT 0
         )
     """)
+    # 4. История
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS order_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,6 +128,7 @@ def init_db():
         )
     """)
     
+    # Админы
     for admin_id in SUPER_ADMINS:
         cursor.execute("SELECT 1 FROM drivers WHERE user_id = ?", (admin_id,))
         if not cursor.fetchone():
@@ -246,33 +275,6 @@ async def safe_send_message(chat_id, text, reply_markup=None):
         await bot.send_message(chat_id, text, reply_markup=reply_markup)
         return True
     except: return False
-
-# ==========================================
-# 📜 МЕНЮ ШОУ-ПРОГРАММ
-# ==========================================
-CRAZY_SERVICES = {
-    "candy": {"cat": 1, "price": 0, "name": "🍬 Презент", "desc": "Артист с серьезным лицом вручает вам элитную конфету в знак уважения."},
-    "nose": {"cat": 1, "price": 300, "name": "👃 Перформанс 'Скука'", "desc": "Артист едет с пальцем в носу всю дорогу. Вы платите за его вживание в роль."},
-    "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Вам открывают дверь, кланяются и называют 'Сир'. Почувствуйте себя в Лондоне."},
-    "joke": {"cat": 1, "price": 50, "name": "🤡 Стендап (Мини)", "desc": "Анекдот категории 'Б' из золотой коллекции. Смех не гарантирован, но атмосфера будет."},
-    "silence": {"cat": 1, "price": 150, "name": "🤐 Режим 'Ниндзя'", "desc": "Артист молчит всю дорогу. Даже если вы спросите путь — он ответит жестами."},
-    "granny": {"cat": 2, "price": 800, "name": "👵 Роль 'Бабуля'", "desc": "Иммерсивный театр. Всю дорогу будут ворчать: 'Куда прешь, наркоман!', 'Шапку надень!'."},
-    "gopnik": {"cat": 2, "price": 500, "name": "🍺 Роль 'Пацанчик'", "desc": "Рэпчик, обращение 'братишка', решение вопросиков. Полное погружение в район."},
-    "guide": {"cat": 2, "price": 600, "name": "🗣 Горе-Гид", "desc": "Экскурсия с выдуманными фактами. 'Этот ларек построил Иван Грозный'."},
-    "psych": {"cat": 2, "price": 1000, "name": "🧠 Психолог", "desc": "Вы жалуетесь на жизнь, Артист кивает и дает житейские советы."},
-    "spy": {"cat": 3, "price": 2000, "name": "🕵️‍♂️ Квест '007'", "desc": "Очки, паранойя, проверка хвоста. Мы уходим от погони (понарошку)."},
-    "karaoke": {"cat": 3, "price": 5000, "name": "🎤 Караоке-Баттл", "desc": "Орем песни на полную! Фальшиво, но душевно. Артист подпевает."},
-    "dance": {"cat": 3, "price": 15000, "name": "💃 Танцы", "desc": "Артист выходит и танцует макарену на светофоре. Зрители в восторге."},
-    "kidnap": {"cat": 4, "price": 30000, "name": "🎭 Похищение", "desc": "Розыгрыш. Вас (понарошку) грузят и везут в лес пить чай."},
-    "tarzan": {"cat": 4, "price": 50000, "name": "🦍 Шоу 'Тарзан'", "desc": "Крики, удары в грудь, рычание на прохожих. Санитары не включены."},
-    "burn": {"cat": 4, "price": 1000000, "name": "🔥 Фаер-Шоу (Авто)", "desc": "Едем на пустырь. Вы платите лям, мы сжигаем реквизит (машину). Эпично."},
-    "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Изысканный комплимент вашим глазам."},
-    "smile": {"cat": 5, "price": 0, "name": "😁 Улыбка", "desc": "Комплимент вашей улыбке."},
-    "style": {"cat": 5, "price": 0, "name": "👠 Икона стиля", "desc": "Восхищение вашим образом."},
-    "improv": {"cat": 5, "price": 0, "name": "✨ Импровизация", "desc": "Артист сам найдет, что в вас похвалить. Фристайл."},
-    "propose": {"cat": 5, "price": 1000, "name": "💍 Предложение", "desc": "Вы делаете предложение Артисту. Шанс 50/50. ⚠️ ПРИ ОТКАЗЕ 1000₽ НЕ ВОЗВРАЩАЮТСЯ!"}
-}
-CATEGORIES = {1: "🟢 ЛАЙТ", 2: "🟡 МЕДИУМ", 3: "🔴 ХАРД", 4: "☠️ VIP БЕЗУМИЕ", 5: "🌹 ДЛЯ ДАМ"}
 
 # ==========================================
 # 🛠 FSM STATES
@@ -517,14 +519,14 @@ async def cnt_snd(m: types.Message, s: FSMContext):
     await m.answer("Отправлено."); await s.clear()
 
 # ==========================================
-# 📜 CRAZY МЕНЮ (СМЕНА РЕЖИМА НА SHOWCASE)
+# 📜 CRAZY МЕНЮ
 # ==========================================
 @dp.message(F.text == "📜 CRAZY МЕНЮ (Категории)")
 async def show_cats(message: types.Message, state: FSMContext):
     if not await check_tos(message): return
     did = get_linked_driver(message.from_user.id)
     
-    # 🌟 ЛОГИКА "ВИТРИНЫ": Если нет водителя, показываем меню, но не даем заказать
+    # 🌟 РЕЖИМ ВИТРИНЫ (Если нет водителя)
     is_showcase = False
     if not did:
         kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -534,7 +536,6 @@ async def show_cats(message: types.Message, state: FSMContext):
         await message.answer("🚖 <b>Вы уже в машине у нашего Артиста?</b>", reply_markup=kb)
         return
 
-    # Стандартный режим (с водителем)
     active_srv = get_driver_active_services(did)
     btns = []
     for cat_id, cat_name in CATEGORIES.items():
@@ -548,7 +549,7 @@ async def enter_code_dialog(c: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "start_showcase")
 async def start_showcase(c: types.CallbackQuery, state: FSMContext):
-    await state.update_data(showcase=True) # Флаг витрины
+    await state.update_data(showcase=True)
     btns = [[InlineKeyboardButton(text=cat_name, callback_data=f"cat_{cat_id}")] for cat_id, cat_name in CATEGORIES.items()]
     await c.message.edit_text("👀 <b>РЕЖИМ ВИТРИНЫ</b> (Только просмотр):", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
 
@@ -558,10 +559,8 @@ async def open_cat(c: types.CallbackQuery, state: FSMContext):
     cat_id = int(c.data.split("_")[1])
     
     if is_showcase:
-        # В витрине показываем ВСЕ услуги (так как не знаем водителя)
         btns = [[InlineKeyboardButton(text=f"{val['name']} — {val['price']}₽", callback_data=f"srv_{key}")] for key, val in CRAZY_SERVICES.items() if val['cat'] == cat_id]
     else:
-        # В боевом режиме - только активные у водителя
         cid = c.from_user.id; did = get_linked_driver(cid); active_srv = get_driver_active_services(did)
         btns = [[InlineKeyboardButton(text=f"{val['name']} — {val['price']}₽", callback_data=f"srv_{key}")] for key, val in CRAZY_SERVICES.items() if val['cat'] == cat_id and key in active_srv]
     
@@ -573,7 +572,7 @@ async def back_cats(c: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     if data.get('showcase'): await start_showcase(c, state)
     else: 
-        # Костыль: вызываем логику show_cats без сообщения
+        # Костыль для возврата
         did = get_linked_driver(c.from_user.id); active_srv = get_driver_active_services(did)
         btns = [[InlineKeyboardButton(text=n, callback_data=f"cat_{i}")] for i, n in CATEGORIES.items() if any(s['cat']==i and k in active_srv for k, s in CRAZY_SERVICES.items())]
         await c.message.edit_text("🔥 <b>ВЫБЕРИТЕ ЖАНР:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
@@ -591,7 +590,7 @@ async def sel_srv(c: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "alert_showcase")
 async def alert_showcase(c: types.CallbackQuery):
-    await c.answer("🚫 Это демо-режим! Чтобы заказать, сядьте в машину к Артисту и введите его код.", show_alert=True)
+    await c.answer("🚫 Это демо-режим! Сядьте в машину к Артисту.", show_alert=True)
 
 @dp.callback_query(F.data.startswith("do_"))
 async def do_ord(c: types.CallbackQuery, state: FSMContext):
@@ -724,6 +723,8 @@ async def brd_s(m: types.Message, s: FSMContext):
 # ==========================================
 # 🔐 ВВОД КЛЮЧА
 # ==========================================
+@dp.message(F.text == "🔐 Ввести КЛЮЧ услуги")
+async def key_st(m: types.Message, s: FSMContext): await s.clear(); await m.answer("Введите код Артиста:"); await s.set_state(UnlockMenu.waiting_for_key)
 @dp.message(UnlockMenu.waiting_for_key)
 async def key_pr(m: types.Message, s: FSMContext):
     drv = get_driver_by_code(m.text.strip().upper())
