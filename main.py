@@ -37,37 +37,40 @@ dp = Dispatcher(storage=storage)
 active_orders = {} 
 
 # ==========================================
-# 📜 КОНСТАНТЫ
+# 📜 ПОЛНЫЕ ОПИСАНИЯ (ATMOSPHERE PACK)
 # ==========================================
 LEGAL_TEXT = (
-    "<b>📜 ПУБЛИЧНАЯ ОФЕРТА</b>\n\n"
-    "1. <b>Суть:</b> Мы — агрегатор поиска творческих попутчиков (Артистов).\n"
-    "2. <b>Транспорт:</b> Перевозка — дело Артиста. Мы продаем шоу.\n"
-    "3. <b>Безопасность:</b> Не мешайте водителю вести машину.\n"
+    "<b>📜 ПУБЛИЧНАЯ ОФЕРТА (AGENCY AGREEMENT)</b>\n\n"
+    "1. <b>Суть сервиса:</b> Бот является агрегатором развлекательных услуг (Event-агентство). Мы помогаем найти Артистов (аниматоров) для создания настроения.\n"
+    "2. <b>Транспорт:</b> Сервис НЕ оказывает транспортные услуги. Автомобиль является «подвижной декорацией» для проведения шоу. Перемещение осуществляется Артистом, имеющим соответствующие права, в рамках его личной ответственности или лицензии.\n"
+    "3. <b>Оплата:</b> Вы платите за творческую программу (перформанс), общество Артиста и атмосферу.\n"
+    "4. <b>Безопасность:</b> Артист вправе прекратить шоу, если Зритель угрожает безопасности движения.\n"
+    "5. <b>Согласие:</b> Нажимая «Найти Артиста», вы нанимаете исполнителя для развлечения, а не службу такси."
 )
 
 CRAZY_SERVICES = {
-    "candy": {"cat": 1, "price": 0, "name": "🍬 Презент", "desc": "Элитная конфета и уважение."},
-    "nose": {"cat": 1, "price": 300, "name": "👃 Палец в носу", "desc": "Артист едет с пальцем в носу."},
-    "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Открываем дверь, называем Сир."},
-    "joke": {"cat": 1, "price": 50, "name": "🤡 Анекдот", "desc": "Юмор категории Б."},
-    "silence": {"cat": 1, "price": 150, "name": "🤐 Ниндзя", "desc": "Полная тишина."},
-    "granny": {"cat": 2, "price": 800, "name": "👵 Бабуля", "desc": "Ворчание всю дорогу."},
-    "gopnik": {"cat": 2, "price": 500, "name": "🍺 Пацанчик", "desc": "Решаем вопросики."},
-    "guide": {"cat": 2, "price": 600, "name": "🗣 Горе-Гид", "desc": "Выдуманные факты о городе."},
-    "psych": {"cat": 2, "price": 1000, "name": "🧠 Психолог", "desc": "Слушаем нытье, киваем."},
-    "spy": {"cat": 3, "price": 2000, "name": "🕵️‍♂️ 007", "desc": "Паранойя, проверка хвоста."},
-    "karaoke": {"cat": 3, "price": 5000, "name": "🎤 Караоке", "desc": "Орем песни дуэтом."},
-    "dance": {"cat": 3, "price": 15000, "name": "💃 Танцы", "desc": "Макарена на светофоре."},
-    "kidnap": {"cat": 4, "price": 30000, "name": "🎭 Похищение", "desc": "В багажнике в лес (понарошку)."},
-    "tarzan": {"cat": 4, "price": 50000, "name": "🦍 Тарзан", "desc": "Рычим на прохожих."},
-    "burn": {"cat": 4, "price": 1000000, "name": "🔥 Сжечь авто", "desc": "Эпичный финал на пустыре."},
-    "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Комплимент глазам."},
-    "smile": {"cat": 5, "price": 0, "name": "😁 Улыбка", "desc": "Комплимент улыбке."},
-    "style": {"cat": 5, "price": 0, "name": "👠 Стиль", "desc": "Восхищение одеждой."},
-    "improv": {"cat": 5, "price": 0, "name": "✨ Импровизация", "desc": "Фристайл."},
-    "propose": {"cat": 5, "price": 1000, "name": "💍 Предложение", "desc": "Руки и сердца."}
+    "candy": {"cat": 1, "price": 0, "name": "🍬 Презент", "desc": "Водитель с максимально серьезным лицом (как на государственных похоронах) вручает вам элитную барбариску. Это знак глубочайшего уважения и начала крепкой дружбы."},
+    "nose": {"cat": 1, "price": 300, "name": "👃 Палец в носу", "desc": "Всю поездку (или до первого поста ГАИ) водитель едет с пальцем в носу. Вы платите за его моральные страдания, потерю авторитета и ваш истерический смех."},
+    "butler": {"cat": 1, "price": 200, "name": "🤵 Дворецкий", "desc": "Водитель выходит, картинно открывает вам дверь, кланяется в пояс и называет вас 'Сир' или 'Миледи'. Чувство превосходства включено в стоимость."},
+    "joke": {"cat": 1, "price": 50, "name": "🤡 Тупой анекдот", "desc": "Анекдот категории 'Б' из золотой коллекции таксиста 90-х. Смеяться не обязательно, но желательно, чтобы не обидеть тонкую творческую натуру водителя."},
+    "silence": {"cat": 1, "price": 150, "name": "🤐 Полная тишина", "desc": "Режим 'Ниндзя'. Музыка выключается, водитель молчит как рыба. Даже если вы спросите дорогу — он ответит языком жестов. Идеально для интровертов."},
+    "granny": {"cat": 2, "price": 800, "name": "👵 Бабушка-ворчунья", "desc": "Ролевая игра. Всю дорогу водитель будет бубнить: 'Куда прешь, наркоман?', 'Шапку надень!', 'Вот в наше время такси стоило копейку!'. Полное погружение в детство."},
+    "gopnik": {"cat": 2, "price": 500, "name": "🍺 Четкий пацанчик", "desc": "Едем под пацанский рэп, водитель сидит на корточках (шутка, за рулем), называет вас 'Братишка', лузгает семечки и решает вопросики по телефону."},
+    "guide": {"cat": 2, "price": 600, "name": "🗣 Ужасный гид", "desc": "Водитель проводит экскурсию, на ходу выдумывая факты. 'Вот этот ларек построил Иван Грозный лично'. Чем бредовее факты, тем лучше."},
+    "psych": {"cat": 2, "price": 1000, "name": "🧠 Психолог", "desc": "Вы жалуетесь на жизнь, бывших и начальника. Водитель кивает, говорит 'Угу', вздыхает и дает житейские советы уровня Ошо."},
+    "spy": {"cat": 3, "price": 2000, "name": "🕵️‍♂️ Шпион 007", "desc": "Черные очки, паранойя. Водитель постоянно проверяет 'хвост', говорит по рации кодами ('Орел в гнезде') и прячет лицо от камер."},
+    "karaoke": {"cat": 3, "price": 5000, "name": "🎤 Адское Караоке", "desc": "Врубаем 'Рюмку водки' или 'Знаешь ли ты' на полную! Водитель орет песни вместе с вами. Фальшиво, громко, но очень душевно."},
+    "dance": {"cat": 3, "price": 15000, "name": "💃 Танцы на капоте", "desc": "На красном свете водитель выбегает из машины и танцует макарену или лезгинку перед капотом. Прохожие снимают, вам стыдно, всем весело!"},
+    "kidnap": {"cat": 4, "price": 30000, "name": "🎭 Дружеское похищение", "desc": "Вас (понарошку, но реалистично) грузят в багажник (или на заднее), надевают мешок на голову и везут в лес... пить элитный чай с баранками."},
+    "tarzan": {"cat": 4, "price": 50000, "name": "🦍 Тарзан-Шоу", "desc": "Водитель бьет себя в грудь, издает гортанные звуки, рычит на прохожих и называет другие машины 'железными буйволами'. Санитары уже выехали."},
+    "burn": {"cat": 4, "price": 1000000, "name": "🔥 Сжечь машину", "desc": "Финальный аккорд. Едем на пустырь. Вы платите миллион, я даю канистру. Гори оно всё огнем. Эпичный финал."},
+    "eyes": {"cat": 5, "price": 0, "name": "👁️ Глаз-алмаз", "desc": "Водитель сделает изысканный комплимент вашим глазам. Возможно, сравнит их с звездами или фарами ксенона."},
+    "smile": {"cat": 5, "price": 0, "name": "😁 Улыбка Джоконды", "desc": "Водитель скажет, что ваша улыбка освещает этот старый, пыльный салон лучше, чем аварийка в ночи."},
+    "style": {"cat": 5, "price": 0, "name": "👠 Икона стиля", "desc": "Восхищение вашим образом. Водитель поинтересуется, не едете ли вы случайно с показа мод в Париже."},
+    "improv": {"cat": 5, "price": 0, "name": "✨ Импровизация", "desc": "Водитель сам найдет, что в вас похвалить. Рискованно, но приятно. Полный фристайл и галантность."},
+    "propose": {"cat": 5, "price": 1000, "name": "💍 Сделать предложение", "desc": "Вы делаете предложение руки, сердца или ипотеки водителю. Шанс 50/50. ⚠️ ПРИ ОТКАЗЕ 1000₽ НЕ ВОЗВРАЩАЮТСЯ!"}
 }
+
 CATEGORIES = {1: "🟢 ЛАЙТ", 2: "🟡 МЕДИУМ", 3: "🔴 ХАРД", 4: "☠️ VIP БЕЗУМИЕ", 5: "🌹 ДЛЯ ДАМ"}
 
 # ==========================================
@@ -110,11 +113,15 @@ def init_db():
 init_db()
 
 # ==========================================
-# 🛠 ФУНКЦИИ
+# 🛠 ФУНКЦИИ-ПОМОЩНИКИ (СНАЧАЛА)
 # ==========================================
 def is_client_accepted(user_id):
     conn = sqlite3.connect(DB_PATH); res = conn.execute("SELECT 1 FROM clients WHERE user_id = ?", (user_id,)).fetchone(); conn.close()
     return bool(res)
+
+async def check_tos(message: types.Message) -> bool:
+    if not is_client_accepted(message.from_user.id): await message.answer("🛑 <b>ДОСТУП ЗАПРЕЩЕН!</b>\nНажмите /start."); return False
+    return True
 
 def get_client_stats(user_id):
     conn = sqlite3.connect(DB_PATH); res = conn.execute("SELECT total_spent FROM clients WHERE user_id=?", (user_id,)).fetchone(); conn.close()
@@ -124,7 +131,7 @@ def update_client_spent(user_id, amount):
     conn = sqlite3.connect(DB_PATH); conn.execute("UPDATE clients SET total_spent = total_spent + ? WHERE user_id=?", (amount, user_id)); conn.commit(); conn.close()
 
 def get_status_name(spent):
-    if spent > 100000: return "👹 МЕЦЕНАТ"; 
+    if spent > 100000: return "👹 МЕЦЕНАТ ХАОСА"; 
     if spent > 50000: return "💀 ПРОДЮСЕР"; 
     if spent > 10000: return "🤪 ЦЕНИТЕЛЬ"; 
     return "👶 ЗРИТЕЛЬ"
@@ -188,10 +195,6 @@ def add_commission(driver_id, amount):
 async def safe_send_message(chat_id, text, reply_markup=None):
     try: await bot.send_message(chat_id, text, reply_markup=reply_markup); return True
     except: return False
-
-async def check_tos(message: types.Message) -> bool:
-    if not is_client_accepted(message.from_user.id): await message.answer("🛑 <b>ДОСТУП ЗАПРЕЩЕН!</b>\nНажмите /start."); return False
-    return True
 
 # ==========================================
 # FSM
@@ -314,13 +317,19 @@ async def t_ok(c: types.CallbackQuery, state: FSMContext):
     
     dkb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💬", callback_data="enter_chat"), InlineKeyboardButton(text="🏁", callback_data=f"ask_finish_{cid}")]])
     await c.message.edit_text(f"✅ Взято. Клиент: {o['phone']}", reply_markup=dkb)
-    ckb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💬", callback_data="enter_chat"), InlineKeyboardButton(text="💸", callback_data=f"cli_pay_{cid}"), InlineKeyboardButton(text="➕", callback_data="add_stop")]])
+    ckb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💬", callback_data="enter_chat"), InlineKeyboardButton(text="💸", callback_data=f"cli_pay_{cid}"), InlineKeyboardButton(text="➕", callback_data="add_stop"), InlineKeyboardButton(text="🆘", callback_data=f"sos_{did}")]])
     await bot.send_message(cid, f"🎭 <b>Едет: {info[7]}</b>\n🚘 {info[1]}\n📞 {o['phone']}\n💰 {o['price']}", reply_markup=ckb)
+
+@dp.callback_query(F.data.startswith("sos_"))
+async def sos_btn(c: types.CallbackQuery):
+    did = int(c.data.split("_")[1]); cid = c.from_user.id
+    for aid in get_all_admins_ids(): await safe_send_message(aid, f"🆘 <b>SOS!</b>\nКлиент: {cid}\nВодитель: {did}")
+    await c.answer("🚨 SOS ОТПРАВЛЕН!", show_alert=True)
 
 @dp.callback_query(F.data.startswith("cli_pay_"))
 async def cli_pay(c: types.CallbackQuery):
     did = active_orders[int(c.data.split("_")[2])]['driver_id']
-    await bot.send_message(did, "💸 Клиент оплатил!", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅", callback_data=f"drv_confirm_{c.data.split('_')[2]}")] ])) # <-- ИСПРАВЛЕНО
+    await bot.send_message(did, "💸 Клиент оплатил!", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅", callback_data=f"drv_confirm_{c.data.split('_')[2]}")] ]))
     await c.message.edit_text("⏳")
 
 @dp.callback_query(F.data.startswith("drv_confirm_"))
@@ -434,7 +443,6 @@ async def reg_fin(m: types.Message, s: FSMContext):
         return await m.answer("❌ Код занят! Придумайте другой.")
     
     d = await s.get_data()
-    # Фикс уникальности: REPLACE
     conn.execute("INSERT OR REPLACE INTO drivers (user_id, username, fio, car_info, payment_info, access_code, status, role) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'driver')", 
                  (m.from_user.id, m.from_user.username or "U", d['fio'], d['car'], d['pay'], code))
     conn.commit()
