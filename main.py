@@ -37,7 +37,7 @@ dp = Dispatcher(storage=storage)
 active_orders = {} 
 
 # ==========================================
-# 📜 ПОЛНЫЕ ТЕКСТЫ И МЕНЮ (БЕЗ СОКРАЩЕНИЙ)
+# 📜 ПОЛНЫЕ ТЕКСТЫ (ВЕРНУЛ ВСЁ КАК БЫЛО)
 # ==========================================
 LEGAL_TEXT = (
     "<b>📜 ПУБЛИЧНАЯ ОФЕРТА (AGENCY AGREEMENT)</b>\n\n"
@@ -99,7 +99,7 @@ def init_db():
             commission INTEGER DEFAULT 10
         )
     """)
-    # 2. Услуги
+    # 2. Услуги Артистов
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS driver_services (
             driver_id INTEGER,
@@ -144,7 +144,7 @@ def init_db():
 init_db()
 
 # ==========================================
-# 🛠 УТИЛИТЫ (ВАЖНО: ОНИ ЗДЕСЬ!)
+# 🛠 УТИЛИТЫ (ФУНКЦИИ)
 # ==========================================
 def is_client_accepted(user_id):
     conn = sqlite3.connect(DB_PATH)
@@ -341,67 +341,67 @@ async def cmd_start(message: types.Message, state: FSMContext):
         )
 
 @dp.callback_query(F.data == "accept_tos")
-async def tos_accepted(c: types.CallbackQuery):
+async def tos_accepted(callback: types.CallbackQuery, state: FSMContext):
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("INSERT OR IGNORE INTO clients (user_id) VALUES (?)", (c.from_user.id,))
+    conn.execute("INSERT OR IGNORE INTO clients (user_id) VALUES (?)", (callback.from_user.id,))
     conn.commit()
     conn.close()
-    await c.message.edit_text("🔥 <b>ВЫ В ИГРЕ!</b>")
-    await c.message.answer("Добро пожаловать. Выбирайте шоу 👇", reply_markup=main_kb)
+    await callback.message.edit_text("🔥 <b>ВЫ В ИГРЕ!</b>")
+    await callback.message.answer("Добро пожаловать. Выбирайте шоу 👇", reply_markup=main_kb)
 
 @dp.callback_query(F.data == "decline_tos")
-async def tos_declined(c: types.CallbackQuery):
-    await c.message.edit_text("🚶‍♂️ Скучные такси в другом приложении.")
+async def tos_declined(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("🚶‍♂️ Скучные такси в другом приложении.")
 
 @dp.message(F.text == "📄 ОФЕРТА")
-async def show_legal(m: types.Message):
-    await m.answer(LEGAL_TEXT)
+async def show_legal(message: types.Message, state: FSMContext):
+    await message.answer(LEGAL_TEXT)
 
 @dp.message(F.text == "⚖️ Вызвать адвоката")
-async def lawyer_menu(m: types.Message):
-    await m.answer("⚖️ <b>ЮРИДИЧЕСКИЙ ОТДЕЛ</b>\nНаш партнер:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🚨 ПЕРЕЙТИ К АДВОКАТУ", url=LAWYER_LINK)]]))
+async def lawyer_menu(message: types.Message, state: FSMContext):
+    await message.answer("⚖️ <b>ЮРИДИЧЕСКИЙ ОТДЕЛ</b>\nНаш партнер:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🚨 ПЕРЕЙТИ К АДВОКАТУ", url=LAWYER_LINK)]]))
 
 @dp.message(F.text == "👤 Мой Кабинет")
-async def client_cab(m: types.Message):
-    if not is_client_accepted(m.from_user.id): return await m.answer("/start")
-    spent = get_client_stats(m.from_user.id)
+async def client_cab(message: types.Message, state: FSMContext):
+    if not is_client_accepted(message.from_user.id): return await message.answer("/start")
+    spent = get_client_stats(message.from_user.id)
     status = get_status_name(spent)
     conn = sqlite3.connect(DB_PATH)
-    hist = conn.execute("SELECT service_name, price FROM order_history WHERE client_id=? ORDER BY id DESC LIMIT 5", (m.from_user.id,)).fetchall()
+    hist = conn.execute("SELECT service_name, price FROM order_history WHERE client_id=? ORDER BY id DESC LIMIT 5", (message.from_user.id,)).fetchall()
     conn.close()
     
     h_txt = "\n".join([f"▪ {h[0]} ({h[1]}₽)" for h in hist]) or "Нет истории шоу."
     
     kb = []
-    if m.from_user.id in active_orders:
+    if message.from_user.id in active_orders:
         kb.append([InlineKeyboardButton(text="💬 ЧАТ С АРТИСТОМ", callback_data="enter_chat")])
     
-    await m.answer(f"👤 <b>КАБИНЕТ ЗРИТЕЛЯ</b>\n👑 Титул: <b>{status}</b>\n💰 Инвестировано в эмоции: <b>{spent}₽</b>\n\n📜 <b>ИСТОРИЯ ШОУ:</b>\n{h_txt}", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb) if kb else None)
+    await message.answer(f"👤 <b>КАБИНЕТ ЗРИТЕЛЯ</b>\n👑 Титул: <b>{status}</b>\n💰 Инвестировано в эмоции: <b>{spent}₽</b>\n\n📜 <b>ИСТОРИЯ ШОУ:</b>\n{h_txt}", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb) if kb else None)
 
 @dp.callback_query(F.data == "enter_chat")
-async def enter_chat_mode(c: types.CallbackQuery, state: FSMContext):
-    uid = c.from_user.id
+async def enter_chat_mode(callback: types.CallbackQuery, state: FSMContext):
+    uid = callback.from_user.id
     pid = None
     if uid in active_orders: pid = active_orders[uid].get('driver_id')
     if not pid:
         for k, v in active_orders.items():
             if v.get('driver_id') == uid: pid = k; break
-    if not pid: return await c.answer("❌ Нет связи", show_alert=True)
+    if not pid: return await callback.answer("❌ Нет связи", show_alert=True)
     
     await state.update_data(chat_partner=pid)
     await state.set_state(ChatState.active)
-    await c.message.answer("💬 <b>КАНАЛ СВЯЗИ ОТКРЫТ!</b>\nПишите сообщение, отправляйте фото или голосовые.", reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🚪 Конец связи")]], resize_keyboard=True))
-    await c.answer()
+    await callback.message.answer("💬 <b>КАНАЛ СВЯЗИ ОТКРЫТ!</b>\nПишите сообщение, отправляйте фото или голосовые.", reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🚪 Конец связи")]], resize_keyboard=True))
+    await callback.answer()
 
 @dp.message(ChatState.active)
-async def chat_relay(m: types.Message, state: FSMContext):
-    if m.text == "🚪 Конец связи":
+async def chat_relay(message: types.Message, state: FSMContext):
+    if message.text == "🚪 Конец связи":
         await state.clear()
-        if get_driver_info(m.from_user.id): return await cab(m, state)
-        else: return await m.answer("Связь завершена.", reply_markup=main_kb)
+        if get_driver_info(message.from_user.id): return await cab(message, state)
+        else: return await message.answer("Связь завершена.", reply_markup=main_kb)
     
     d = await state.get_data()
-    await m.copy_to(chat_id=d.get('chat_partner'))
+    await message.copy_to(chat_id=d.get('chat_partner'))
 
 # --- TAXI (SEARCH) ---
 async def broadcast_to_drivers_func(cid, txt, kb):
@@ -425,47 +425,47 @@ async def broadcast_to_drivers_func(cid, txt, kb):
     if tasks: await asyncio.gather(*tasks)
 
 @dp.message(F.text == "🎭 Найти Артиста (с авто)")
-async def t_s(m: types.Message, s: FSMContext):
-    await s.clear()
-    await m.answer("📍 <b>Где начинаем шоу?</b> (Адрес подачи)", reply_markup=types.ReplyKeyboardRemove())
-    await s.set_state(OrderRide.waiting_for_from)
+async def t_s(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("📍 <b>Где начинаем шоу?</b> (Адрес подачи)", reply_markup=types.ReplyKeyboardRemove())
+    await state.set_state(OrderRide.waiting_for_from)
 
 @dp.message(OrderRide.waiting_for_from)
-async def t_f(m: types.Message, s: FSMContext):
-    await s.update_data(fr=m.text)
-    await m.answer("🏁 <b>Куда едем?</b>")
-    await s.set_state(OrderRide.waiting_for_to)
+async def t_f(message: types.Message, state: FSMContext):
+    await state.update_data(fr=message.text)
+    await message.answer("🏁 <b>Куда едем?</b>")
+    await state.set_state(OrderRide.waiting_for_to)
 
 @dp.message(OrderRide.waiting_for_to)
-async def t_t(m: types.Message, s: FSMContext):
-    await s.update_data(to=m.text)
-    await m.answer("📞 <b>Телефон для связи:</b>")
-    await s.set_state(OrderRide.waiting_for_phone)
+async def t_t(message: types.Message, state: FSMContext):
+    await state.update_data(to=message.text)
+    await message.answer("📞 <b>Телефон для связи:</b>")
+    await state.set_state(OrderRide.waiting_for_phone)
 
 @dp.message(OrderRide.waiting_for_phone)
-async def t_p(m: types.Message, s: FSMContext):
-    await s.update_data(ph=m.text)
-    await m.answer("💰 <b>Предложите гонорар (цена поездки):</b>")
-    await s.set_state(OrderRide.waiting_for_price)
+async def t_p(message: types.Message, state: FSMContext):
+    await state.update_data(ph=message.text)
+    await message.answer("💰 <b>Предложите гонорар (цена поездки):</b>")
+    await state.set_state(OrderRide.waiting_for_price)
 
 @dp.message(OrderRide.waiting_for_price)
-async def t_end(m: types.Message, s: FSMContext):
-    d = await s.get_data()
-    cid = m.from_user.id
-    active_orders[cid] = {"type":"taxi", "status":"pending", "price":m.text, "from":d['fr'], "to":d['to'], "phone":d['ph']}
-    await m.answer("✅ <b>Заявка в эфире!</b>", reply_markup=main_kb)
-    await s.clear()
+async def t_end(message: types.Message, state: FSMContext):
+    d = await state.get_data()
+    cid = message.from_user.id
+    active_orders[cid] = {"type":"taxi", "status":"pending", "price":message.text, "from":d['fr'], "to":d['to'], "phone":d['ph']}
+    await message.answer("✅ <b>Заявка в эфире!</b>", reply_markup=main_kb)
+    await state.clear()
     
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ПРИНЯТЬ РОЛЬ", callback_data=f"t_ok_{cid}"), InlineKeyboardButton(text="💰 ТОРГ", callback_data=f"t_bid_{cid}")]])
-    await broadcast_to_drivers_func(cid, f"🎭 <b>ЗАПРОС НА ПЕРФОРМАНС</b>\n📍 {d['fr']} -> {d['to']}\n💰 {m.text}", kb)
+    await broadcast_to_drivers_func(cid, f"🎭 <b>ЗАПРОС НА ПЕРФОРМАНС</b>\n📍 {d['fr']} -> {d['to']}\n💰 {message.text}", kb)
 
 @dp.callback_query(F.data.startswith("t_ok_"))
-async def t_ok(c: types.CallbackQuery, state: FSMContext):
-    cid = int(c.data.split("_")[2])
-    did = c.from_user.id
+async def t_ok(callback: types.CallbackQuery, state: FSMContext):
+    cid = int(callback.data.split("_")[2])
+    did = callback.from_user.id
     o = active_orders.get(cid)
     
-    if not o or o["status"] != "pending": return await c.answer("Роль уже занята!")
+    if not o or o["status"] != "pending": return await callback.answer("Роль уже занята!")
     
     o["status"] = "accepted"
     o["driver_id"] = did
@@ -478,7 +478,7 @@ async def t_ok(c: types.CallbackQuery, state: FSMContext):
         except: pass
     
     dkb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💬 ЧАТ", callback_data="enter_chat"), InlineKeyboardButton(text="🏁 ФИНАЛ", callback_data=f"ask_finish_{cid}")]])
-    await c.message.edit_text(f"✅ <b>Роль принята!</b>\nЗритель: {o['phone']}", reply_markup=dkb)
+    await callback.message.edit_text(f"✅ <b>Роль принята!</b>\nЗритель: {o['phone']}", reply_markup=dkb)
     
     ckb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💬 ЧАТ", callback_data="enter_chat")],
@@ -488,62 +488,63 @@ async def t_ok(c: types.CallbackQuery, state: FSMContext):
     await bot.send_message(cid, f"🎭 <b>АРТИСТ ВЫЕХАЛ!</b>\n👤 {info[7]}\n🚘 {info[1]}\n📞 {o['phone']}\n💰 {o['price']}₽\n🔐 Код: <code>{info[5]}</code>", reply_markup=ckb)
 
 @dp.callback_query(F.data.startswith("sos_"))
-async def sos_btn(c: types.CallbackQuery):
-    did = int(c.data.split("_")[1])
-    cid = c.from_user.id
+async def sos_btn(callback: types.CallbackQuery, state: FSMContext):
+    did = int(callback.data.split("_")[1])
+    cid = callback.from_user.id
     for aid in get_all_admins_ids():
         await safe_send_message(aid, f"🆘 <b>SOS ТРЕВОГА!</b>\nКлиент: {cid}\nВодитель: {did}")
-    await c.answer("🚨 SOS ОТПРАВЛЕН АДМИНАМ!", show_alert=True)
+    await callback.answer("🚨 SOS ОТПРАВЛЕН АДМИНАМ!", show_alert=True)
 
 @dp.callback_query(F.data.startswith("cli_pay_"))
-async def cli_pay(c: types.CallbackQuery):
-    did = active_orders[int(c.data.split("_")[2])]['driver_id']
-    await bot.send_message(did, "💸 <b>Клиент сообщил об оплате!</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ПОДТВЕРДИТЬ", callback_data=f"drv_confirm_{c.data.split('_')[2]}")] ]))
-    await c.message.edit_text("⏳ Ждем подтверждения Артиста...")
+async def cli_pay(callback: types.CallbackQuery, state: FSMContext):
+    cid = int(callback.data.split("_")[2])
+    did = active_orders[cid]['driver_id']
+    await bot.send_message(did, "💸 <b>Клиент сообщил об оплате!</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ПОДТВЕРДИТЬ", callback_data=f"drv_confirm_{cid}")] ]))
+    await callback.message.edit_text("⏳ Ждем подтверждения Артиста...")
 
 @dp.callback_query(F.data.startswith("drv_confirm_"))
-async def drv_con(c: types.CallbackQuery):
-    cid = int(c.data.split("_")[2])
+async def drv_con(callback: types.CallbackQuery, state: FSMContext):
+    cid = int(callback.data.split("_")[2])
     await bot.send_message(cid, "✅ <b>Оплата принята!</b>")
-    await c.message.edit_text("✅ Принято.")
+    await callback.message.edit_text("✅ Принято.")
 
 @dp.callback_query(F.data == "add_stop")
-async def add_stop(c: types.CallbackQuery, s: FSMContext):
-    await c.message.answer("Адрес заезда:")
-    await s.set_state(AddStop.waiting_for_address)
+async def add_stop(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.answer("Адрес заезда:")
+    await state.set_state(AddStop.waiting_for_address)
 
 @dp.message(AddStop.waiting_for_address)
-async def add_stop_p(m: types.Message, s: FSMContext):
-    await s.update_data(a=m.text)
-    await m.answer("Доплата (руб):")
-    await s.set_state(AddStop.waiting_for_price)
+async def add_stop_p(message: types.Message, state: FSMContext):
+    await state.update_data(a=message.text)
+    await message.answer("Доплата (руб):")
+    await state.set_state(AddStop.waiting_for_price)
 
 @dp.message(AddStop.waiting_for_price)
-async def add_stop_f(m: types.Message, s: FSMContext):
-    d = await s.get_data()
-    cid = m.from_user.id
+async def add_stop_f(message: types.Message, state: FSMContext):
+    d = await state.get_data()
+    cid = message.from_user.id
     did = active_orders[cid]['driver_id']
-    await bot.send_message(did, f"📍 <b>Заезд:</b> {d['a']}\n💰 +{m.text}", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅", callback_data=f"stop_ok_{cid}_{m.text}")]]))
-    await m.answer("⏳ Отправлено Артисту...")
-    await s.clear()
+    await bot.send_message(did, f"📍 <b>Заезд:</b> {d['a']}\n💰 +{message.text}", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅", callback_data=f"stop_ok_{cid}_{message.text}")]]))
+    await message.answer("⏳ Отправлено Артисту...")
+    await state.clear()
 
 @dp.callback_query(F.data.startswith("stop_ok_"))
-async def stop_ok(c: types.CallbackQuery):
-    cid = int(c.data.split("_")[2])
-    pr = int(c.data.split("_")[3])
+async def stop_ok(callback: types.CallbackQuery, state: FSMContext):
+    cid = int(callback.data.split("_")[2])
+    pr = int(callback.data.split("_")[3])
     active_orders[cid]['price'] = str(extract_price(active_orders[cid]['price']) + pr)
     await bot.send_message(cid, f"✅ <b>Принято!</b> Новая цена: {active_orders[cid]['price']}")
-    await c.message.edit_text("✅ Точка добавлена.")
+    await callback.message.edit_text("✅ Точка добавлена.")
 
 @dp.callback_query(F.data.startswith("ask_finish_"))
-async def ask_fin(c: types.CallbackQuery):
-    cid = int(c.data.split("_")[2])
+async def ask_fin(callback: types.CallbackQuery, state: FSMContext):
+    cid = int(callback.data.split("_")[2])
     await bot.send_message(cid, "🏁 <b>Шоу окончено! Оценка Артисту:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⭐ 5 (ОТЛИЧНО)", callback_data=f"rate_{cid}_5")]]))
-    await c.message.edit_text("✅ Сеанс закрыт.")
+    await callback.message.edit_text("✅ Сеанс закрыт.")
 
 @dp.callback_query(F.data.startswith("rate_"))
-async def rate(c: types.CallbackQuery):
-    cid = int(c.data.split("_")[1])
+async def rate(callback: types.CallbackQuery, state: FSMContext):
+    cid = int(callback.data.split("_")[1])
     o = active_orders.get(cid)
     if o:
         did = o['driver_id']
@@ -554,90 +555,90 @@ async def rate(c: types.CallbackQuery):
         add_commission(did, pr)
         await bot.send_message(did, "🎉 <b>Вам поставили 5⭐!</b>")
         del active_orders[cid]
-    await c.message.edit_text("Спасибо за участие в шоу!")
+    await callback.message.edit_text("Спасибо за участие в шоу!")
 
 # --- ТОРГ ---
 @dp.callback_query(F.data.startswith("t_bid_"))
-async def cnt_s(c: types.CallbackQuery, s: FSMContext):
-    await s.update_data(cid=int(c.data.split("_")[2]))
-    await c.message.answer("Ваша цена:")
-    await s.set_state(DriverCounterOffer.waiting_for_offer)
+async def cnt_s(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(cid=int(callback.data.split("_")[2]))
+    await callback.message.answer("Ваша цена:")
+    await state.set_state(DriverCounterOffer.waiting_for_offer)
 
 @dp.message(DriverCounterOffer.waiting_for_offer)
-async def cnt_snd(m: types.Message, s: FSMContext):
-    d = await s.get_data()
+async def cnt_snd(message: types.Message, state: FSMContext):
+    d = await state.get_data()
     cid = d['cid']
-    await bot.send_message(cid, f"⚡ <b>Артист предлагает:</b> {m.text}", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅", callback_data=f"t_ok_{cid}"), InlineKeyboardButton(text="❌", callback_data="decline_tos")]]))
-    await m.answer("Отправлено.")
-    await s.clear()
+    await bot.send_message(cid, f"⚡ <b>Артист предлагает:</b> {message.text}", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅", callback_data=f"t_ok_{cid}"), InlineKeyboardButton(text="❌", callback_data="decline_tos")]]))
+    await message.answer("Отправлено.")
+    await state.clear()
 
 # --- MENU ---
 @dp.message(F.text == "📜 CRAZY МЕНЮ (Категории)")
-async def show_cats(m: types.Message, s: FSMContext):
-    if not await check_tos(m): return
-    did = get_linked_driver(m.from_user.id)
+async def show_cats(message: types.Message, state: FSMContext):
+    if not await check_tos(message): return
+    did = get_linked_driver(message.from_user.id)
     
     # РЕЖИМ ВИТРИНЫ
     if not did:
-        return await m.answer("🚖 <b>Вы уже в машине у Артиста?</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ДА (Ввести код)", callback_data="enter_code_dialog")],[InlineKeyboardButton(text="👀 ПРОСТО СМОТРЮ", callback_data="start_showcase")]]))
+        return await message.answer("🚖 <b>Вы уже в машине у Артиста?</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ДА (Ввести код)", callback_data="enter_code_dialog")],[InlineKeyboardButton(text="👀 ПРОСТО СМОТРЮ", callback_data="start_showcase")]]))
     
     act = get_driver_active_services(did)
     btns = []
     for i, n in CATEGORIES.items():
         if any(v['cat']==i and k in act for k,v in CRAZY_SERVICES.items()):
             btns.append([InlineKeyboardButton(text=n, callback_data=f"cat_{i}")])
-    await m.answer("🔥 <b>ВЫБЕРИТЕ ЖАНР:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
+    await message.answer("🔥 <b>ВЫБЕРИТЕ ЖАНР:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
 
 @dp.callback_query(F.data == "enter_code_dialog")
-async def enter_cd(c: types.CallbackQuery, s: FSMContext):
-    await c.message.answer("Введите код Артиста:")
-    await s.set_state(UnlockMenu.waiting_for_key)
+async def enter_cd(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.answer("Введите код Артиста:")
+    await state.set_state(UnlockMenu.waiting_for_key)
 
 @dp.callback_query(F.data == "start_showcase")
-async def start_sc(c: types.CallbackQuery, s: FSMContext):
-    await s.update_data(showcase=True)
+async def start_sc(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(showcase=True)
     btns = [[InlineKeyboardButton(text=n, callback_data=f"cat_{i}")] for i, n in CATEGORIES.items()]
-    await c.message.edit_text("👀 <b>РЕЖИМ ВИТРИНЫ</b> (Только просмотр):", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
+    await callback.message.edit_text("👀 <b>РЕЖИМ ВИТРИНЫ</b> (Только просмотр):", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
 
 @dp.callback_query(F.data.startswith("cat_"))
-async def cat_op(c: types.CallbackQuery, s: FSMContext):
-    cid = int(c.data.split("_")[1])
-    d = await s.get_data()
+async def cat_op(callback: types.CallbackQuery, state: FSMContext):
+    cid = int(callback.data.split("_")[1])
+    d = await state.get_data()
     showcase = d.get('showcase')
     
     if showcase:
         act = CRAZY_SERVICES.keys()
     else:
-        act = get_driver_active_services(get_linked_driver(c.from_user.id))
+        act = get_driver_active_services(get_linked_driver(callback.from_user.id))
         
     btns = [[InlineKeyboardButton(text=f"{v['name']} — {v['price']}₽", callback_data=f"srv_{k}")] for k,v in CRAZY_SERVICES.items() if v['cat']==cid and k in act]
     btns.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_c")])
-    await c.message.edit_text(f"📂 <b>{CATEGORIES[cid]}</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
+    await callback.message.edit_text(f"📂 <b>{CATEGORIES[cid]}</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
 
 @dp.callback_query(F.data == "back_c")
-async def back_c(c: types.CallbackQuery, s: FSMContext):
-    await c.message.delete()
-    await show_cats(c.message, s)
+async def back_c(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.delete()
+    await show_cats(callback.message, state)
 
 @dp.callback_query(F.data.startswith("srv_"))
-async def srv_sel(c: types.CallbackQuery, s: FSMContext):
-    k = c.data.split("_")[1]
+async def srv_sel(callback: types.CallbackQuery, state: FSMContext):
+    k = callback.data.split("_")[1]
     v = CRAZY_SERVICES[k]
-    d = await s.get_data()
+    d = await state.get_data()
     
     btn = "✅ ЗАКАЗАТЬ ШОУ" if not d.get('showcase') else "🔒 ДОСТУПНО В ПОЕЗДКЕ"
     cb = f"do_{k}" if not d.get('showcase') else "alert_sc"
     
-    await c.message.edit_text(f"🎭 <b>{v['name']}</b>\n💰 {v['price']}₽\n<i>{v['desc']}</i>", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn, callback_data=cb)],[InlineKeyboardButton(text="🔙", callback_data=f"cat_{v['cat']}")]]))
+    await callback.message.edit_text(f"🎭 <b>{v['name']}</b>\n💰 {v['price']}₽\n<i>{v['desc']}</i>", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn, callback_data=cb)],[InlineKeyboardButton(text="🔙", callback_data=f"cat_{v['cat']}")]]))
 
 @dp.callback_query(F.data == "alert_sc")
-async def al_sc(c: types.CallbackQuery):
-    await c.answer("Это демо-режим! Сядьте в машину к Артисту.", show_alert=True)
+async def al_sc(callback: types.CallbackQuery, state: FSMContext):
+    await callback.answer("Это демо-режим! Сядьте в машину к Артисту.", show_alert=True)
 
 @dp.callback_query(F.data.startswith("do_"))
-async def do_ord(c: types.CallbackQuery):
-    k = c.data.split("_")[1]
-    cid = c.from_user.id
+async def do_ord(callback: types.CallbackQuery, state: FSMContext):
+    k = callback.data.split("_")[1]
+    cid = callback.from_user.id
     did = get_linked_driver(cid)
     v = CRAZY_SERVICES[k]
     
@@ -645,158 +646,158 @@ async def do_ord(c: types.CallbackQuery):
     
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ПРИНЯТЬ", callback_data=f"c_acc_{cid}"), InlineKeyboardButton(text="💬 ЧАТ", callback_data="enter_chat")]])
     await bot.send_message(did, f"🔔 <b>ЗАКАЗ ШОУ: {v['name']}</b>\n💰 {v['price']}", reply_markup=kb)
-    await c.message.edit_text("⏳ Ждем подтверждения Артиста...")
+    await callback.message.edit_text("⏳ Ждем подтверждения Артиста...")
 
 @dp.callback_query(F.data.startswith("c_acc_"))
-async def crazy_acc(c: types.CallbackQuery):
-    cid = int(c.data.split("_")[2])
-    i = get_driver_info(c.from_user.id)
+async def crazy_acc(callback: types.CallbackQuery, state: FSMContext):
+    cid = int(callback.data.split("_")[2])
+    i = get_driver_info(callback.from_user.id)
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💸 ГОНОРАР ПЕРЕВЕДЕН", callback_data=f"cli_pay_{cid}"), InlineKeyboardButton(text="💬 ЧАТ", callback_data="enter_chat")]])
     await bot.send_message(cid, f"✅ Артист готов! Реквизиты: <code>{i[2]}</code>", reply_markup=kb)
-    await c.message.edit_text("✅ В работе.")
+    await callback.message.edit_text("✅ В работе.")
 
 # --- REGISTRATION & CAB ---
 @dp.message(Command("driver", "drive"))
-async def reg_s(m: types.Message, s: FSMContext):
-    if get_driver_info(m.from_user.id): return await m.answer("Уже зарегистрированы.")
-    await s.clear()
-    await m.answer("📝 Введите ФИО:")
-    await s.set_state(DriverRegistration.waiting_for_fio)
+async def reg_s(message: types.Message, state: FSMContext):
+    if get_driver_info(message.from_user.id): return await message.answer("Уже зарегистрированы.")
+    await state.clear()
+    await message.answer("📝 Введите ФИО:")
+    await state.set_state(DriverRegistration.waiting_for_fio)
 
 @dp.message(DriverRegistration.waiting_for_fio)
-async def reg_f(m: types.Message, s: FSMContext): await s.update_data(fio=m.text); await m.answer("Авто (Сцена):"); await s.set_state(DriverRegistration.waiting_for_car)
+async def reg_f(message: types.Message, state: FSMContext): await state.update_data(fio=message.text); await message.answer("Авто (Сцена):"); await state.set_state(DriverRegistration.waiting_for_car)
 @dp.message(DriverRegistration.waiting_for_car)
-async def reg_c(m: types.Message, s: FSMContext): await s.update_data(car=m.text); await m.answer("Реквизиты:"); await s.set_state(DriverRegistration.waiting_for_payment_info)
+async def reg_c(message: types.Message, state: FSMContext): await state.update_data(car=message.text); await message.answer("Реквизиты:"); await state.set_state(DriverRegistration.waiting_for_payment_info)
 @dp.message(DriverRegistration.waiting_for_payment_info)
-async def reg_p(m: types.Message, s: FSMContext): await s.update_data(pay=m.text); await m.answer("Придумайте Код-пароль:"); await s.set_state(DriverRegistration.waiting_for_code)
+async def reg_p(message: types.Message, state: FSMContext): await state.update_data(pay=message.text); await message.answer("Придумайте Код-пароль:"); await state.set_state(DriverRegistration.waiting_for_code)
 @dp.message(DriverRegistration.waiting_for_code)
-async def reg_fin(m: types.Message, s: FSMContext):
-    code = m.text.upper().strip()
+async def reg_fin(message: types.Message, state: FSMContext):
+    code = message.text.upper().strip()
     conn = sqlite3.connect(DB_PATH)
     # Check duplicate code by someone else
-    exist = conn.execute("SELECT 1 FROM drivers WHERE access_code=? AND user_id != ?", (code, m.from_user.id)).fetchone()
+    exist = conn.execute("SELECT 1 FROM drivers WHERE access_code=? AND user_id != ?", (code, message.from_user.id)).fetchone()
     if exist:
         conn.close()
-        return await m.answer("❌ Код занят другим Артистом!")
+        return await message.answer("❌ Код занят другим Артистом!")
     
-    d = await s.get_data()
+    d = await state.get_data()
     # Правильная регистрация с обновлением
     conn.execute("INSERT OR REPLACE INTO drivers (user_id, username, fio, car_info, payment_info, access_code, status, role) VALUES (?, ?, ?, ?, ?, ?, 'pending', 'driver')", 
-                 (m.from_user.id, m.from_user.username or "U", d['fio'], d['car'], d['pay'], code))
+                 (message.from_user.id, message.from_user.username or "U", d['fio'], d['car'], d['pay'], code))
     conn.commit()
     conn.close()
     
-    init_driver_services_defaults(m.from_user.id)
-    await m.answer("✅ Заявка отправлена!")
+    init_driver_services_defaults(message.from_user.id)
+    await message.answer("✅ Заявка отправлена!")
     
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ПРИНЯТЬ", callback_data=f"adm_app_{m.from_user.id}")]])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ПРИНЯТЬ", callback_data=f"adm_app_{message.from_user.id}")]])
     for adm in get_all_admins_ids():
         await safe_send_message(adm, f"🚨 <b>НОВЫЙ АРТИСТ:</b> {d['fio']}", kb)
-    await s.clear()
+    await state.clear()
 
 @dp.callback_query(F.data.startswith("adm_app_"))
-async def adm_app(c: types.CallbackQuery):
-    if not is_admin(c.from_user.id): return
-    did = int(c.data.split("_")[2])
+async def adm_app(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id): return
+    did = int(callback.data.split("_")[2])
     update_driver_field(did, "status", "active")
-    await c.message.edit_text("✅ Принят")
+    await callback.message.edit_text("✅ Принят")
     await safe_send_message(did, "🎉 Вы в труппе! /cab")
 
 @dp.message(Command("cab"))
-async def cab(m: types.Message, s: FSMContext):
-    i = get_driver_info(m.from_user.id)
-    await s.clear()
-    if not i: return await m.answer("❌ Нет регистрации. /drive")
+async def cab(message: types.Message, state: FSMContext):
+    i = get_driver_info(message.from_user.id)
+    await state.clear()
+    if not i: return await message.answer("❌ Нет регистрации. /drive")
     
     txt = (f"🪪 <b>ГРИМЕРКА</b>\n👤 {i[7]}\n💰 Баланс: {i[3]}₽\n🔑 Код: <code>{i[5]}</code>")
     kb = [
         [InlineKeyboardButton(text="🎛 Репертуар (Меню)", callback_data="driver_menu_edit")],
         [InlineKeyboardButton(text="💸 Оплатить комиссию", callback_data="cab_pay")]
     ]
-    await m.answer(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await message.answer(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 @dp.callback_query(F.data == "driver_menu_edit")
-async def d_menu(c: types.CallbackQuery):
-    act = get_driver_active_services(c.from_user.id)
+async def d_menu(callback: types.CallbackQuery, state: FSMContext):
+    act = get_driver_active_services(callback.from_user.id)
     btns = []
     for k, v in CRAZY_SERVICES.items():
         status = "✅" if k in act else "❌"
         btns.append([InlineKeyboardButton(text=f"{status} {v['name']}", callback_data=f"tgl_{k}")])
     btns.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_cab")])
-    await c.message.edit_text("🎛 <b>НАСТРОЙКА РЕПЕРТУАРА:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
+    await callback.message.edit_text("🎛 <b>НАСТРОЙКА РЕПЕРТУАРА:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=btns))
 
 @dp.callback_query(F.data.startswith("tgl_"))
-async def tgl(c: types.CallbackQuery):
-    toggle_driver_service(c.from_user.id, c.data.split("_")[1])
-    await d_menu(c)
+async def tgl(callback: types.CallbackQuery, state: FSMContext):
+    toggle_driver_service(callback.from_user.id, callback.data.split("_")[1])
+    await d_menu(callback, state)
 
 @dp.callback_query(F.data == "back_to_cab")
-async def b_cab(c: types.CallbackQuery, s: FSMContext):
-    await c.message.delete()
-    await cab(c.message, s)
+async def b_cab(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.delete()
+    await cab(callback.message, state)
 
 @dp.callback_query(F.data == "cab_pay")
-async def cab_pay(c: types.CallbackQuery):
-    info = get_driver_info(c.from_user.id)
+async def cab_pay(callback: types.CallbackQuery, state: FSMContext):
+    info = get_driver_info(callback.from_user.id)
     boss = get_driver_info(OWNER_ID)
-    await c.message.answer(f"💸 Ваш долг: <b>{info[3]}₽</b>\nПеревод Продюсеру: <b>{boss[2]}</b>")
-    await c.answer()
+    await callback.message.answer(f"💸 Ваш долг: <b>{info[3]}₽</b>\nПеревод Продюсеру: <b>{boss[2]}</b>")
+    await callback.answer()
 
 @dp.message(UnlockMenu.waiting_for_key)
-async def key_fin(m: types.Message, s: FSMContext):
-    drv = get_driver_by_code(m.text.strip().upper())
+async def key_fin(message: types.Message, state: FSMContext):
+    drv = get_driver_by_code(message.text.strip().upper())
     if drv:
-        set_linked_driver(m.from_user.id, drv[0])
-        await m.answer(f"🔓 <b>ДОСТУП ОТКРЫТ!</b>\nАртист: {drv[3]}\nАвто: {drv[2]}", reply_markup=main_kb)
-        await s.clear()
+        set_linked_driver(message.from_user.id, drv[0])
+        await message.answer(f"🔓 <b>ДОСТУП ОТКРЫТ!</b>\nАртист: {drv[3]}\nАвто: {drv[2]}", reply_markup=main_kb)
+        await state.clear()
     else:
-        await m.answer("❌ Неверный код.")
+        await message.answer("❌ Неверный код.")
 
 # --- ADMINKA ---
 @dp.message(Command("admin"))
-async def adm(m: types.Message, s: FSMContext):
-    await s.clear()
-    if not is_admin(m.from_user.id): return await m.answer("⛔")
+async def adm(message: types.Message, state: FSMContext):
+    await state.clear()
+    if not is_admin(message.from_user.id): return await message.answer("⛔")
     
     conn = sqlite3.connect(DB_PATH)
     drs = conn.execute("SELECT user_id, fio, balance FROM drivers").fetchall()
     conn.close()
     
     txt = "👑 <b>ПРОДЮСЕРСКИЙ ЦЕНТР</b>\n" + "\n".join([f"• {d[1]} | {d[2]}₽ | /edit_{d[0]}" for d in drs])
-    await m.answer(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📢 РАССЫЛКА", callback_data="admin_broadcast")]]))
+    await message.answer(txt, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📢 РАССЫЛКА", callback_data="admin_broadcast")]]))
 
 @dp.message(F.text.startswith("/edit_"))
-async def ed(m: types.Message, s: FSMContext):
-    if not is_admin(m.from_user.id): return
-    did = int(m.text.split("_")[1])
-    await s.update_data(target_did=did)
-    await m.answer("Действие:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💸 Выставить счет", callback_data=f"adm_bill_{did}")]]))
+async def ed(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id): return
+    did = int(message.text.split("_")[1])
+    await state.update_data(target_did=did)
+    await message.answer("Действие:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💸 Выставить счет", callback_data=f"adm_bill_{did}")]]))
 
 @dp.callback_query(F.data.startswith("adm_bill_"))
-async def bl(c: types.CallbackQuery, s: FSMContext):
-    await s.update_data(target_did=int(c.data.split("_")[2]))
-    await c.message.answer("Введите сумму или текст счета:")
-    await s.set_state(AdminBilling.waiting_for_custom_req)
+async def bl(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(target_did=int(callback.data.split("_")[2]))
+    await callback.message.answer("Введите сумму или текст счета:")
+    await state.set_state(AdminBilling.waiting_for_custom_req)
 
 @dp.message(AdminBilling.waiting_for_custom_req)
-async def bl_s(m: types.Message, s: FSMContext):
-    d = await s.get_data()
-    await bot.send_message(d['target_did'], f"⚠️ <b>СЧЕТ ОТ ПРОДЮСЕРА:</b>\n{m.text}")
-    await m.answer("✅ Отправлено")
-    await s.clear()
+async def bl_s(message: types.Message, state: FSMContext):
+    d = await state.get_data()
+    await bot.send_message(d['target_did'], f"⚠️ <b>СЧЕТ ОТ ПРОДЮСЕРА:</b>\n{message.text}")
+    await message.answer("✅ Отправлено")
+    await state.clear()
 
 @dp.callback_query(F.data == "admin_broadcast")
-async def brd(c: types.CallbackQuery, s: FSMContext):
-    await c.message.answer("Введите текст рассылки:")
-    await s.set_state(AdminBroadcast.waiting_for_text)
+async def brd(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.answer("Введите текст рассылки:")
+    await state.set_state(AdminBroadcast.waiting_for_text)
 
 @dp.message(AdminBroadcast.waiting_for_text)
-async def brd_s(m: types.Message, s: FSMContext):
+async def brd_s(message: types.Message, state: FSMContext):
     count = 0
     for d in get_active_drivers():
-        if await safe_send_message(d, f"📢 <b>НОВОСТИ КЛУБА:</b>\n{m.text}"): count += 1
-    await m.answer(f"✅ Доставлено: {count}")
-    await s.clear()
+        if await safe_send_message(d, f"📢 <b>НОВОСТИ КЛУБА:</b>\n{message.text}"): count += 1
+    await message.answer(f"✅ Доставлено: {count}")
+    await state.clear()
 
 async def main():
     await dp.start_polling(bot)
