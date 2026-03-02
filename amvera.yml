@@ -10,4 +10,4 @@ run:
   scriptName: main.py
   command: null
   persistenceMount: /data
-  containerPort: "80"
+  containerPort: "8080"
