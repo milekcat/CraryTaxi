@@ -1,218 +1,66 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Артель «Весёлый Извозчик»</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Весёлый Извозчик</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        :root {
-            --primary: #800000;
-            --secondary: #4b3621;
-            --bg: #fdf5e6;
-            --card-bg: #ffffff;
-            --accent: #d4af37;
-        }
-
-        body {
-            background-color: var(--bg);
-            color: var(--secondary);
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 15px;
-            padding-bottom: 30px;
-        }
-
-        h1 {
-            text-align: center;
-            color: var(--primary);
-            border-bottom: 2px double var(--accent);
-            padding-bottom: 10px;
-            font-variant: small-caps;
-        }
-
-        .category-title {
-            background: var(--accent);
-            color: white;
-            padding: 5px 15px;
-            border-radius: 5px;
-            margin-top: 20px;
-            font-weight: bold;
-            font-size: 0.9em;
-        }
-
-        .service-card {
-            background: var(--card-bg);
-            border: 1px solid #ddd;
-            border-radius: 12px;
-            padding: 15px;
-            margin: 12px 0;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-            display: flex;
-            flex-direction: column;
-            transition: transform 0.2s;
-        }
-
-        .service-card:active {
-            transform: scale(0.98);
-        }
-
-        .service-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 8px;
-        }
-
-        .service-name {
-            font-weight: bold;
-            font-size: 1.1em;
-            color: var(--primary);
-        }
-
-        .service-price {
-            background: #e8f5e9;
-            color: #2e7d32;
-            padding: 3px 8px;
-            border-radius: 6px;
-            font-weight: bold;
-        }
-
-        .service-desc {
-            font-size: 0.9em;
-            color: #666;
-            line-height: 1.4;
-            margin-bottom: 12px;
-        }
-
-        button {
-            background-color: var(--primary);
-            color: white;
-            border: none;
-            padding: 10px;
-            border-radius: 8px;
-            font-weight: bold;
-            cursor: pointer;
-            width: 100%;
-            font-size: 16px;
-        }
-
-        button:hover {
-            filter: brightness(1.2);
-        }
-
-        #loader {
-            text-align: center;
-            padding: 50px;
-            font-style: italic;
-        }
+        body { font-family: sans-serif; background: #f0f0f0; padding: 10px; }
+        .card { background: white; border-radius: 12px; padding: 15px; margin-bottom: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .price { color: #2ecc71; font-weight: bold; }
+        .btn { background: #3498db; color: white; border: none; padding: 10px; border-radius: 8px; width: 100%; margin-top: 10px; cursor: pointer; }
+        .cat-tag { font-size: 10px; background: #e67e22; color: white; padding: 2px 6px; border-radius: 4px; float: right; }
     </style>
 </head>
 <body>
-
-    <h1>🐎 Весёлый Извозчик</h1>
-    <div id="loader">Раскладываем товары на прилавке...</div>
-    <div id="app"></div>
+    <h2 style="text-align: center;">📜 Репертуар Артели</h2>
+    <div id="services-list">Загрузка потех...</div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        tg.ready();
+        const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 0;
 
-        const categories = {
-            1: "🟢 ЛАЙТ-ПОТЕХИ",
-            2: "🟡 МЕДИУМ (РОЛЕВЫЕ)",
-            3: "🔴 ХАРДКОР",
-            4: "☠️ ЦАРСКИЙ ВЫБОР (VIP)",
-            5: "🌹 ДЛЯ БОЯРЫНЬ"
-        };
-
-        const services = [
-            {id: 'candy', cat: 1, name: "🍬 Сладкий гостинец", price: 0, desc: "Ямщик с поклоном вручает леденец."},
-            {id: 'nose', cat: 1, name: "👃 Перст в носу", price: 300, desc: "Ямщик всю дорогу в носу ковыряет."},
-            {id: 'butler', cat: 1, name: "🤵 Дворецкий", price: 200, desc: "Кланяемся, величаем Барином."},
-            {id: 'joke', cat: 1, name: "🤡 Скоморох", price: 50, desc: "Шутка юмора. Смеяться обязательно."},
-            {id: 'silence', cat: 1, name: "🤐 Обет молчания", price: 150, desc: "Едем молча, как в монастыре."},
-            {id: 'granny', cat: 2, name: "👵 Ворчливая бабка", price: 800, desc: "Ролевая игра: Куда прешь, окаянный!"},
-            {id: 'gopnik', cat: 2, name: "🍺 Разбойник", price: 500, desc: "Шансон, семки, решение вопросиков."},
-            {id: 'guide', cat: 2, name: "🗣 Горе-Гид", price: 600, desc: "Небылицы о каждом столбе."},
-            {id: 'psych', cat: 2, name: "🧠 Душеприказчик", price: 1000, desc: "Слушаем кручину, даем советы."},
-            {id: 'spy', cat: 3, name: "🕵️ Опричник (007)", price: 2000, desc: "Тайная слежка и уход от погони."},
-            {id: 'karaoke', cat: 3, name: "🎤 Застольные песни", price: 5000, desc: "Орем песни дуэтом на всю улицу."},
-            {id: 'dance', cat: 3, name: "🐻 Медвежьи пляски", price: 15000, desc: "Танцы на капоте на светофоре."},
-            {id: 'kidnap', cat: 4, name: "🎭 Похищение", price: 30000, desc: "В мешок и в лес (понарошку)."},
-            {id: 'tarzan', cat: 4, name: "🦍 Леший", price: 50000, desc: "Рычим на прохожих, пугаем девок."},
-            {id: 'burn', cat: 4, name: "🔥 Огненная колесница", price: 1000000, desc: "Сжигаем повозку на пустыре."},
-            {id: 'eyes', cat: 5, name: "👁️ Очи чёрные", price: 0, desc: "Комплимент вашим глазам."},
-            {id: 'smile', cat: 5, name: "😁 Улыбка", price: 0, desc: "Комплимент вашей улыбке."},
-            {id: 'style', cat: 5, name: "👠 Модный приговор", price: 0, desc: "Восхищение нарядом."},
-            {id: 'improv', cat: 5, name: "✨ Импровизация", price: 0, desc: "Ямщик сам придумает потеху."},
-            {id: 'propose', cat: 5, name: "💍 Сватовство", price: 1000, desc: "Предложение руки и сердца."}
-        ];
-
-        function render() {
-            const app = document.getElementById('app');
-            const loader = document.getElementById('loader');
-            let html = '';
-
-            for (let catId in categories) {
-                const catServices = services.filter(s => s.cat == catId);
-                if (catServices.length > 0) {
-                    html += `<div class="category-title">${categories[catId]}</div>`;
-                    catServices.forEach(s => {
-                        html += `
-                            <div class="service-card">
-                                <div class="service-header">
-                                    <span class="service-name">${s.name}</span>
-                                    <span class="service-price">${s.price} ₽</span>
-                                </div>
-                                <div class="service-desc">${s.desc}</div>
-                                <button onclick="orderService('${s.name}', ${s.price})">ЗАКАЗАТЬ</button>
-                            </div>
-                        `;
-                    });
-                }
-            }
-            
-            loader.style.display = 'none';
-            app.innerHTML = html;
-        }
-
-        function orderService(name, price) {
-            const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : null;
-            
-            if (!userId) {
-                alert("Ошибка: Не удалось определить ваш ID. Откройте приложение через бота.");
-                return;
-            }
-
-            fetch('/webapp_order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: userId,
-                    service: name,
-                    price: price
-                })
-            })
-            .then(response => response.json())
+        // Загружаем услуги динамически
+        fetch(`/get_services?user_id=${userId}`)
+            .then(r => r.json())
             .then(data => {
-                if (data.status === 'ok') {
-                    tg.close();
-                } else if (data.status === 'no_driver') {
-                    alert("Ошибка: У вас не привязан Ямщик! Введите код ямщика в чате бота.");
-                    tg.close();
-                } else {
-                    alert("Произошла ошибка при заказе.");
+                const container = document.getElementById('services-list');
+                container.innerHTML = '';
+                if (data.error) {
+                    container.innerHTML = '<p>Пожалуйста, сначала введите код Ямщика в боте!</p>';
+                    return;
                 }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert("Ошибка связи с сервером. Попробуйте позже.");
+                data.forEach(s => {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.innerHTML = `
+                        <span class="cat-tag">${s.cat}</span>
+                        <div style="font-weight:bold">${s.name}</div>
+                        <div style="font-size:12px; color: #666">${s.desc}</div>
+                        <div class="price">${s.price}₽</div>
+                        <button class="btn" onclick="order('${s.name}', ${s.price})">ЗАКАЗАТЬ</button>
+                    `;
+                    container.appendChild(card);
+                });
             });
-        }
 
-        render();
+        function order(name, price) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                fetch('/webapp_order', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        user_id: userId, service: name, price: price,
+                        lat: pos.coords.latitude, lon: pos.coords.longitude
+                    })
+                }).then(() => {
+                    tg.showAlert("Ямщик уже запрягает! Ожидайте.");
+                    tg.close();
+                });
+            }, () => alert("Нужен GPS, чтобы ямщик вас нашел!"));
+        }
     </script>
 </body>
 </html>
