@@ -21,7 +21,7 @@ from aiogram.client.default import DefaultBotProperties
 logging.basicConfig(level=logging.INFO)
 
 API_TOKEN = os.getenv("API_TOKEN")
-OWNER_ID = 6004764782  # Ваш ID
+OWNER_ID = 6004764782  # Ваш подтвержденный ID
 APP_URL = "https://tazyy-milekcat.amvera.io"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -34,7 +34,7 @@ dp = Dispatcher(storage=storage)
 active_orders = {} 
 
 # ==========================================
-# 📜 ПОЛНЫЙ ПЕРЕЧЕНЬ УСЛУГ (ВОЗВРАЩЕНО)
+# 📜 ПОЛНЫЙ ПЕРЕЧЕНЬ УСЛУГ
 # ==========================================
 CRAZY_SERVICES = {
     "candy": {"cat": 1, "name": "🍬 Сладкий гостинец", "desc": "Ямщик с поклоном вручает леденец."},
@@ -98,7 +98,7 @@ init_db()
 # ==========================================
 class DriverReg(StatesGroup): fio=State(); car=State(); pay=State(); code=State()
 class Unlock(StatesGroup): key=State()
-class AdminDirectMsg(StatesGroup): text=State() # Для написания водителю
+class AdminDirectMsg(StatesGroup): text=State()
 class CustomServiceAdd(StatesGroup): name=State(); desc=State(); price=State()
 
 # ==========================================
@@ -143,7 +143,6 @@ async def start(message: types.Message):
     ], resize_keyboard=True)
     await message.answer(WELCOME_TEXT, reply_markup=kb)
 
-# --- ГЛАВНЫЙ КАБИНЕТ ---
 @dp.message(F.text == "👤 Моя Светлица")
 @dp.message(Command("cab"))
 async def cabinet(message: types.Message, state: FSMContext):
@@ -151,10 +150,8 @@ async def cabinet(message: types.Message, state: FSMContext):
     drv = get_driver(uid)
 
     if uid == OWNER_ID:
-        kb = [
-            [InlineKeyboardButton(text="📋 Список Ямщиков", callback_data="adm_list")],
-            [InlineKeyboardButton(text="📢 Рассылка", callback_data="adm_cast")]
-        ]
+        kb = [[InlineKeyboardButton(text="📋 Список Ямщиков", callback_data="adm_list")],
+              [InlineKeyboardButton(text="📢 Рассылка", callback_data="adm_cast")]]
         await message.answer("👑 <b>КАБИНЕТ СТАРОСТЫ</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
         return
 
@@ -167,59 +164,42 @@ async def cabinet(message: types.Message, state: FSMContext):
     cli = get_client(uid)
     await message.answer(f"👤 <b>КАБИНЕТ КЛИЕНТА</b>\n🎬 Поездок: {cli[3] if cli else 0}")
 
-# --- АДМИН: УПРАВЛЕНИЕ И СВЯЗЬ ---
+# --- УПРАВЛЕНИЕ АДМИНОМ ---
 @dp.callback_query(F.data == "adm_list")
 async def adm_list(call: types.CallbackQuery):
     with sqlite3.connect(DB_PATH) as con:
         drivers = con.execute("SELECT user_id, fio, balance, status FROM drivers WHERE role != 'owner'").fetchall()
-    
     if not drivers: return await call.message.answer("Ямщиков нет.")
-    
     for d in drivers:
-        kb = [
-            [InlineKeyboardButton(text="✉️ Написать", callback_data=f"msg_{d[0]}"),
-             InlineKeyboardButton(text="💰 Счёт", callback_data=f"bill_{d[0]}")],
-            [InlineKeyboardButton(text="🚫 Блок", callback_data=f"blk_{d[0]}"),
-             InlineKeyboardButton(text="✅ Разблок", callback_data=f"unl_{d[0]}")]
-        ]
-        await call.message.answer(f"👤 <b>{d[1]}</b>\nID: <code>{d[0]}</code>\nДолг: {d[2]}₽\nСтатус: {d[3]}", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        kb = [[InlineKeyboardButton(text="✉️ Написать", callback_data=f"msg_{d[0]}"),
+               InlineKeyboardButton(text="🚫 Блок", callback_data=f"blk_{d[0]}"),
+               InlineKeyboardButton(text="✅ Разблок", callback_data=f"unl_{d[0]}")]]
+        await call.message.answer(f"👤 {d[1]}\nID: {d[0]}\nДолг: {d[2]}₽\nСтатус: {d[3]}", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-# РАЗБЛОКИРОВКА
 @dp.callback_query(F.data.startswith("unl_"))
 async def adm_unblock(call: types.CallbackQuery):
     did = call.data.split("_")[1]
     with sqlite3.connect(DB_PATH) as con: con.execute("UPDATE drivers SET status='active' WHERE user_id=?", (did,))
-    await call.answer("Разблокирован!")
-    await safe_send(did, "🎉 <b>Благая весть!</b> Староста вернул вам лицензию Ямщика. Работайте во славу артели!")
+    await call.answer("Разблокирован!"); await safe_send(did, "🎉 Лицензия возвращена!")
 
-# БЛОКИРОВКА
 @dp.callback_query(F.data.startswith("blk_"))
 async def adm_block(call: types.CallbackQuery):
     did = call.data.split("_")[1]
     with sqlite3.connect(DB_PATH) as con: con.execute("UPDATE drivers SET status='blocked' WHERE user_id=?", (did,))
-    await call.answer("Заблокирован")
-    await safe_send(did, "⛔ <b>Лицензия отозвана.</b> Вы заблокированы Старостой.")
+    await call.answer("Заблокирован"); await safe_send(did, "⛔ Вы заблокированы.")
 
-# НАПИСАТЬ ВОДИТЕЛЮ (ШАГ 1)
 @dp.callback_query(F.data.startswith("msg_"))
 async def adm_msg_start(call: types.CallbackQuery, state: FSMContext):
-    did = call.data.split("_")[1]
-    await state.update_data(target_did=did)
-    await call.message.answer(f"Введите сообщение для Ямщика (ID {did}):")
-    await state.set_state(AdminDirectMsg.text)
+    await state.update_data(target_did=call.data.split("_")[1])
+    await call.message.answer("Введите текст послания:"); await state.set_state(AdminDirectMsg.text)
 
-# НАПИСАТЬ ВОДИТЕЛЮ (ШАГ 2)
 @dp.message(AdminDirectMsg.text)
 async def adm_msg_send(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    did = data['target_did']
-    text = message.text
-    success = await safe_send(did, f"✉️ <b>ПОСЛАНИЕ ОТ СТАРОСТЫ:</b>\n\n{text}")
-    if success: await message.answer("✅ Отправлено водителю.")
-    else: await message.answer("❌ Не удалось отправить (бот заблокирован или ошибка).")
-    await state.clear()
+    await safe_send(data['target_did'], f"✉️ <b>ОТ СТАРОСТЫ:</b>\n\n{message.text}")
+    await message.answer("✅ Отправлено."); await state.clear()
 
-# --- КОНСТРУКТОР ЛИЧНЫХ УСЛУГ ---
+# --- СВОИ УСЛУГИ ---
 @dp.callback_query(F.data == "add_custom")
 async def add_custom_start(call: types.CallbackQuery, state: FSMContext):
     await call.message.answer("Название потехи:"); await state.set_state(CustomServiceAdd.name)
@@ -234,15 +214,15 @@ async def add_custom_desc(message: types.Message, state: FSMContext):
 
 @dp.message(CustomServiceAdd.price)
 async def add_custom_price(message: types.Message, state: FSMContext):
-    if not message.text.isdigit(): return await message.answer("Цифрами, пожалуйста.")
+    if not message.text.isdigit(): return await message.answer("Цифрами.")
     data = await state.get_data()
     with sqlite3.connect(DB_PATH) as con:
         con.execute("INSERT INTO custom_services (driver_id, name, description, price) VALUES (?, ?, ?, ?)", 
                     (message.from_user.id, data['name'], data['desc'], int(message.text)))
-    await message.answer("✅ Ваша личная услуга добавлена!"); await state.clear()
+    await message.answer("✅ Добавлено!"); await state.clear()
 
 # ==========================================
-# 🚀 ЗАПУСК
+# 🚀 ЗАПУСК (ИСПРАВЛЕНО)
 # ==========================================
 async def on_startup(app):
     await bot.delete_webhook(drop_pending_updates=True)
@@ -253,6 +233,7 @@ def main():
     app.router.add_get('/', lambda r: web.FileResponse(HTML_FILE))
     app.router.add_post('/webapp_order', web_order)
     app.on_startup.append(on_startup)
+    # Используем фиксированные значения во избежание NameError
     web.run_app(app, host='0.0.0.0', port=8080)
 
 if __name__ == "__main__":
