@@ -1,65 +1,312 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Весёлый Извозчик</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { font-family: sans-serif; background: #f0f0f0; padding: 10px; }
-        .card { background: white; border-radius: 12px; padding: 15px; margin-bottom: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .price { color: #2ecc71; font-weight: bold; }
-        .btn { background: #3498db; color: white; border: none; padding: 10px; border-radius: 8px; width: 100%; margin-top: 10px; cursor: pointer; }
-        .cat-tag { font-size: 10px; background: #e67e22; color: white; padding: 2px 6px; border-radius: 4px; float: right; }
+        /* --- ЦАРСКИЙ СТИЛЬ --- */
+        :root {
+            --bg-color: #f4e4bc; /* Пергамент */
+            --primary: #5a3a22;  /* Дуб */
+            --accent: #800000;   /* Сургуч */
+            --gold: #d4af37;     /* Золото */
+            --text: #3b2f2f;
+            --success: #27ae60;
+        }
+
+        body {
+            font-family: 'Georgia', 'serif';
+            background-color: var(--bg-color);
+            color: var(--text);
+            margin: 0;
+            padding: 15px;
+            padding-bottom: 40px;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Заголовок */
+        header {
+            text-align: center;
+            border-bottom: 3px double var(--gold);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+            background: radial-gradient(circle, rgba(255,255,255,0.4) 0%, rgba(0,0,0,0) 70%);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 24px;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-shadow: 1px 1px 0px rgba(255,255,255,0.5);
+        }
+
+        .subtitle {
+            font-size: 12px;
+            color: var(--primary);
+            font-style: italic;
+            margin-top: 5px;
+        }
+
+        /* Карточка услуги */
+        .card {
+            background: #fffdf5;
+            border: 1px solid #dcd0b0;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 6px rgba(90, 58, 34, 0.1);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s;
+        }
+
+        .card:active {
+            transform: scale(0.98);
+        }
+
+        /* Декор карточки (уголок) */
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--gold);
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .cat-badge {
+            font-size: 10px;
+            text-transform: uppercase;
+            background: var(--primary);
+            color: var(--gold);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+        }
+
+        .price {
+            font-family: 'Arial', sans-serif;
+            font-size: 16px;
+            font-weight: bold;
+            color: var(--accent);
+            background: rgba(128, 0, 0, 0.1);
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+
+        .name {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 6px;
+            color: var(--text);
+        }
+
+        .desc {
+            font-size: 13px;
+            line-height: 1.4;
+            color: #665;
+            margin-bottom: 15px;
+            font-style: italic;
+        }
+
+        /* Кнопка */
+        .btn {
+            background: linear-gradient(to bottom, #8a2be2 0%, #4b0082 100%); /* Фиолетовый бархат для кнопки не подходит к стилю, берем красный */
+            background: linear-gradient(to bottom, #a03030 0%, #800000 100%);
+            color: #fff;
+            border: 1px solid #5a0000;
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::after {
+            content: '🛒';
+            position: absolute;
+            right: 15px;
+            opacity: 0.5;
+        }
+
+        .btn:active {
+            background: #600000;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        /* Лоадер */
+        #loader {
+            text-align: center;
+            color: var(--primary);
+            margin-top: 50px;
+            font-style: italic;
+        }
+
+        /* Статус бар внизу */
+        .status-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: var(--primary);
+            color: var(--gold);
+            text-align: center;
+            font-size: 10px;
+            padding: 5px 0;
+            z-index: 100;
+        }
     </style>
 </head>
 <body>
-    <h2 style="text-align: center;">📜 Репертуар Артели</h2>
-    <div id="services-list">Загрузка потех...</div>
+
+    <header>
+        <h1>Весёлый Извозчик</h1>
+        <div class="subtitle">Артель гужевых перевозок и утех</div>
+    </header>
+
+    <div id="loader">Запрягаем лошадей...</div>
+    <div id="services-list"></div>
+    
+    <div class="status-bar" id="status-text">Определение местоположения...</div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 0;
+        tg.enableClosingConfirmation();
 
-        // Загружаем услуги динамически
+        // Безопасное получение ID пользователя
+        const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 0;
+        const statusText = document.getElementById('status-text');
+
+        // 1. Загрузка списка услуг
         fetch(`/get_services?user_id=${userId}`)
             .then(r => r.json())
             .then(data => {
                 const container = document.getElementById('services-list');
+                const loader = document.getElementById('loader');
+                
+                loader.style.display = 'none';
                 container.innerHTML = '';
+
                 if (data.error) {
-                    container.innerHTML = '<p>Пожалуйста, сначала введите код Ямщика в боте!</p>';
+                    container.innerHTML = '<div style="text-align:center; padding:20px;">Ошибка связи с сервером.</div>';
                     return;
                 }
+
+                if (data.length === 0) {
+                    container.innerHTML = '<div style="text-align:center; padding:20px;">Список услуг пуст.</div>';
+                    return;
+                }
+
+                // Отрисовка карточек
                 data.forEach(s => {
                     const card = document.createElement('div');
                     card.className = 'card';
                     card.innerHTML = `
-                        <span class="cat-tag">${s.cat}</span>
-                        <div style="font-weight:bold">${s.name}</div>
-                        <div style="font-size:12px; color: #666">${s.desc}</div>
-                        <div class="price">${s.price}₽</div>
+                        <div class="row">
+                            <span class="cat-badge">${s.cat}</span>
+                            <span class="price">${s.price} ₽</span>
+                        </div>
+                        <div class="name">${s.name}</div>
+                        <div class="desc">${s.desc}</div>
                         <button class="btn" onclick="order('${s.name}', ${s.price})">ЗАКАЗАТЬ</button>
                     `;
                     container.appendChild(card);
                 });
+                
+                statusText.innerText = "Готов к заказу | GPS активен";
+            })
+            .catch(err => {
+                document.getElementById('loader').innerText = "Ошибка загрузки меню.";
+                console.error(err);
             });
 
+        // 2. Функция заказа
         function order(name, price) {
-            navigator.geolocation.getCurrentPosition(pos => {
-                fetch('/webapp_order', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        user_id: userId, service: name, price: price,
-                        lat: pos.coords.latitude, lon: pos.coords.longitude
+            // Вибрация для тактильного отклика (если поддерживается)
+            if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+
+            if(!confirm(`Заказать услугу "${name}" за ${price}₽?`)) return;
+
+            statusText.innerText = "Получаем координаты...";
+
+            // Запрос GPS
+            if (!navigator.geolocation) {
+                alert("Ваше устройство не поддерживает GPS");
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                // Успех GPS
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    
+                    statusText.innerText = "Отправка гонца...";
+
+                    fetch('/webapp_order', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            user_id: userId,
+                            service: name,
+                            price: price,
+                            lat: lat,
+                            lon: lon
+                        })
                     })
-                }).then(() => {
-                    tg.showAlert("Ямщик уже запрягает! Ожидайте.");
-                    tg.close();
-                });
-            }, () => alert("Нужен GPS, чтобы ямщик вас нашел!"));
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'ok') {
+                            tg.showAlert("✅ Ямщик принял заказ!\nОжидайте подачу.");
+                            tg.close();
+                        } else if (data.status === 'ok_market') {
+                            tg.showAlert("📢 Заказ отправлен на БИРЖУ!\nИщем ближайшего свободного ямщика.");
+                            tg.close();
+                        } else if (data.status === 'no_active_drivers') {
+                            tg.showAlert("😔 На линии нет свободных ямщиков.\nПопробуйте позже.");
+                        } else if (data.status === 'no_driver') {
+                             // Этого статуса быть не должно в v80, но на всякий случай
+                            tg.showAlert("Ошибка авторизации.");
+                        } else {
+                            tg.showAlert("Произошла ошибка при заказе.");
+                        }
+                    })
+                    .catch(error => {
+                        tg.showAlert("Ошибка сети. Проверьте интернет.");
+                        statusText.innerText = "Ошибка связи";
+                    });
+                },
+                // Ошибка GPS
+                (error) => {
+                    let msg = "Не удалось получить геопозицию.";
+                    if (error.code === 1) msg = "Вы запретили доступ к геолокации. Разрешите его в настройках телефона.";
+                    else if (error.code === 2) msg = "GPS сигнал недоступен.";
+                    else if (error.code === 3) msg = "Тайм-аут поиска GPS.";
+                    
+                    alert("⚠️ " + msg + "\nБез координат ямщик вас не найдет!");
+                    statusText.innerText = "Ошибка GPS";
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
         }
     </script>
 </body>
