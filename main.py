@@ -21,7 +21,6 @@ API_TOKEN = os.getenv("API_TOKEN")
 OWNER_ID = 6004764782
 APP_URL = "https://tazyy-milekcat.amvera.io"
 
-# Текст партнера (HTML)
 PARTNER_TEXT = (
     "💎 <b>ПАРТНЁР АРТЕЛИ</b>\n\n"
     "Наш генеральный спонсор и друг — <b>KWORK</b>.\n"
@@ -29,7 +28,6 @@ PARTNER_TEXT = (
     "<i>Здесь могла быть ваша реклама или ссылка на канал.</i>"
 )
 
-# Красивое приветствие
 WELCOME_TEXT = (
     "📜 <b>УКАЗ ПО АРТЕЛИ «ВЕСЁЛЫЙ ИЗВОЗЧИК»</b>\n"
     "━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -58,7 +56,7 @@ active_orders = {}
 market_orders = {}
 
 # ==========================================
-# 📜 УСЛУГИ (ПОЛНЫЙ СПИСОК)
+# 📜 УСЛУГИ
 # ==========================================
 CATEGORIES_VIP = ["Большие", "Дикие"] 
 
@@ -68,20 +66,16 @@ CRAZY_SERVICES = {
     "butler": {"cat": "Малые", "name": "🤵 Дворецкий", "desc": "Открываем дверь, величаем Барином.", "price": 300},
     "joke": {"cat": "Малые", "name": "🤡 Скоморох", "desc": "Шутки юмора. Смеяться обязательно.", "price": 200},
     "silence": {"cat": "Малые", "name": "🤐 Обет молчания", "desc": "Едем молча, как в монастыре.", "price": 500},
-    
     "granny": {"cat": "Средние", "name": "👵 Ворчливая бабка", "desc": "Ролевая игра: Куда прешь, окаянный!", "price": 400},
     "gopnik": {"cat": "Средние", "name": "🍺 Разбойник", "desc": "Шансон, семки, решение вопросиков.", "price": 600},
     "guide": {"cat": "Средние", "name": "🗣 Горе-Гид", "desc": "Небылицы о каждом столбе.", "price": 350},
     "psych": {"cat": "Средние", "name": "🧠 Душеприказчик", "desc": "Слушаем кручину, даем советы.", "price": 1000},
-
     "spy": {"cat": "Большие", "name": "🕵️ Опричник (007)", "desc": "Тайная слежка и уход от погони.", "price": 1500},
     "karaoke": {"cat": "Большие", "name": "🎤 Застольные песни", "desc": "Орем песни дуэтом.", "price": 800},
     "dance": {"cat": "Большие", "name": "🐻 Медвежьи пляски", "desc": "Танцы на капоте.", "price": 1200},
-
     "kidnap": {"cat": "Дикие", "name": "🎭 Похищение", "desc": "В мешок и в лес (понарошку).", "price": 3000},
     "tarzan": {"cat": "Дикие", "name": "🦍 Леший", "desc": "Рычим на прохожих, пугаем девок.", "price": 2000},
     "burn": {"cat": "Дикие", "name": "🔥 Огненная колесница", "desc": "Сжигаем повозку на пустыре.", "price": 50000},
-
     "eyes": {"cat": "Светские", "name": "👁️ Очи чёрные", "desc": "Комплимент вашим глазам.", "price": 50},
     "smile": {"cat": "Светские", "name": "😁 Улыбка", "desc": "Комплимент вашей улыбке.", "price": 50},
     "style": {"cat": "Светские", "name": "👠 Модный приговор", "desc": "Восхищение нарядом.", "price": 100},
@@ -90,44 +84,30 @@ CRAZY_SERVICES = {
 }
 
 # ==========================================
-# 🗄️ БАЗА ДАННЫХ (ARMORED EDITION)
+# 🗄️ БАЗА ДАННЫХ
 # ==========================================
 def get_db_connection():
-    # timeout=10 ждет, если база заблокирована другим процессом
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row 
     return conn
 
 def init_db():
-    logging.info(f"💾 [DB] Initializing database at {DB_PATH}...")
+    logging.info(f"💾 [DB] Initializing database...")
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # 1. DRIVERS
         cur.execute("""CREATE TABLE IF NOT EXISTS drivers (
             user_id INTEGER PRIMARY KEY, username TEXT, fio TEXT, car_info TEXT, payment_info TEXT, 
             access_code TEXT UNIQUE, vip_code TEXT UNIQUE, 
             status TEXT DEFAULT 'pending', role TEXT DEFAULT 'driver', balance INTEGER DEFAULT 0, lat REAL, lon REAL)""")
         conn.commit()
-        logging.info("💾 [DB] Table 'drivers' OK.")
 
-        # 2. DISABLED SERVICES
         cur.execute("CREATE TABLE IF NOT EXISTS disabled_services (driver_id INTEGER, service_key TEXT, PRIMARY KEY(driver_id, service_key))")
-        conn.commit()
-        logging.info("💾 [DB] Table 'disabled_services' OK.")
-
-        # 3. CUSTOM SERVICES
         cur.execute("CREATE TABLE IF NOT EXISTS custom_services (id INTEGER PRIMARY KEY AUTOINCREMENT, driver_id INTEGER, name TEXT, description TEXT, price INTEGER, category TEXT)")
-        conn.commit()
-        logging.info("💾 [DB] Table 'custom_services' OK.")
-
-        # 4. CLIENTS (ТУТ БЫЛА ОШИБКА)
         cur.execute("CREATE TABLE IF NOT EXISTS clients (user_id INTEGER PRIMARY KEY, linked_driver_id INTEGER DEFAULT NULL, access_level TEXT DEFAULT 'std')")
         conn.commit()
-        logging.info("💾 [DB] Table 'clients' OK.")
 
-        # 5. МИГРАЦИИ (Добавление колонок, если их нет)
         def add_col(tbl, col, tp):
             try: cur.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {tp}")
             except: pass
@@ -139,48 +119,38 @@ def init_db():
         add_col("clients", "access_level", "TEXT DEFAULT 'std'")
         conn.commit()
 
-        # 6. СОЗДАНИЕ АДМИНА
         cur.execute("INSERT OR IGNORE INTO drivers (user_id, fio, access_code, vip_code, status, role) VALUES (?, 'СТАРОСТА', 'ADMIN', 'ADMIN_VIP', 'active', 'owner')", (OWNER_ID,))
         cur.execute("UPDATE drivers SET role='owner', status='active' WHERE user_id=?", (OWNER_ID,))
         conn.commit()
-        
         conn.close()
-        logging.info("✅ [DB] Initialization complete.")
-
+        logging.info("✅ [DB] OK.")
     except Exception as e:
-        logging.error(f"❌ [DB] CRITICAL ERROR: {e}")
+        logging.error(f"❌ [DB] ERROR: {e}")
 
-# Запускаем инициализацию ПРИ СТАРТЕ скрипта
 init_db()
 
 # ==========================================
-# 📡 WEB API (BACKEND)
+# 📡 WEB API
 # ==========================================
 async def get_services(request):
     uid = int(request.query.get('user_id', 0))
     with get_db_connection() as con:
-        # Пытаемся получить клиента, если нет - создаем пустышку в памяти (не в базе), чтобы не крашилось
         cli = con.execute("SELECT linked_driver_id, access_level FROM clients WHERE user_id=?", (uid,)).fetchone()
         
-        # Сценарий БИРЖИ (Нет водителя)
         if not cli or not cli['linked_driver_id']:
             res = [v for k, v in CRAZY_SERVICES.items() if v['cat'] not in CATEGORIES_VIP]
             return web.json_response(res)
         
         did = cli['linked_driver_id']
         level = cli['access_level']
-        
         disabled = [r['service_key'] for r in con.execute("SELECT service_key FROM disabled_services WHERE driver_id=?", (did,)).fetchall()]
         customs = con.execute("SELECT name, description, price, category FROM custom_services WHERE driver_id=?", (did,)).fetchall()
     
     final = []
-    # Фильтр стандартных
     for k, v in CRAZY_SERVICES.items():
         if k in disabled: continue
         if level != 'vip' and v['cat'] in CATEGORIES_VIP: continue
         final.append(v)
-    
-    # Фильтр личных
     for c in customs:
         cat = c['category']
         if level != 'vip' and cat in CATEGORIES_VIP: continue
@@ -197,7 +167,6 @@ async def web_order(request):
     
     map_url = f"https://www.google.com/maps?q={lat},{lon}"
     
-    # ПРЯМОЙ ЗАКАЗ (ВОДИТЕЛЬ ЕСТЬ)
     if cli and cli['linked_driver_id']:
         did = cli['linked_driver_id']
         active_orders[uid] = {"driver_id": did}
@@ -207,16 +176,12 @@ async def web_order(request):
         ])
         await bot.send_message(did, f"🔔 <b>ЛИЧНЫЙ ЗАКАЗ!</b>\n🎭 {srv}\n💰 {price}₽\n📍 <a href='{map_url}'>КАРТА</a>", reply_markup=kb)
         return web.json_response({"status": "ok"})
-    
-    # ЗАКАЗ НА БИРЖУ (ВОДИТЕЛЯ НЕТ)
     else:
         oid = f"m_{uid}_{int(datetime.now().timestamp())}"
         market_orders[oid] = {"uid": uid, "srv": srv, "price": price, "map": map_url}
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✋ ЗАБРАТЬ", callback_data=f"take_{oid}")]])
-        
         with get_db_connection() as con:
             drvs = con.execute("SELECT user_id FROM drivers WHERE status='active' AND role!='owner'").fetchall()
-        
         cnt = 0
         for d in drvs:
             try:
@@ -226,7 +191,7 @@ async def web_order(request):
         return web.json_response({"status": "ok_market" if cnt > 0 else "no_active_drivers"})
 
 # ==========================================
-# 🤖 BOT HANDLERS (FSM & LOGIC)
+# 🤖 BOT HANDLERS
 # ==========================================
 class DriverReg(StatesGroup): fio=State(); car=State(); pay=State(); code1=State(); code2=State()
 class CustomSrv(StatesGroup): name=State(); desc=State(); price=State(); cat=State()
@@ -234,44 +199,66 @@ class ChangeCodes(StatesGroup): c1=State(); c2=State()
 class AdminMsg(StatesGroup): text=State()
 class AdminHR(StatesGroup): text=State()
 
-# ПОМОЩНИКИ
 def get_driver(uid):
-    with get_db_connection() as con: 
-        return con.execute("SELECT * FROM drivers WHERE user_id=?", (uid,)).fetchone()
+    with get_db_connection() as con: return con.execute("SELECT * FROM drivers WHERE user_id=?", (uid,)).fetchone()
 
 async def safe_send(chat_id, text, kb=None):
     try: await bot.send_message(chat_id, text, reply_markup=kb); return True
     except: return False
 
-# 1. START & WELCOME (FIXED CLIENT INSERT)
+# 1. COMMANDS
 @dp.message(Command("start"))
 async def start(m: types.Message, state: FSMContext):
     await state.clear()
-    
     try:
         with get_db_connection() as con: 
-            # Вот тут падало, теперь мы это ловим. 
-            # И если таблицы нет (что невозможно с новой init_db), то мы ее создадим на лету в крайнем случае
-            con.execute("CREATE TABLE IF NOT EXISTS clients (user_id INTEGER PRIMARY KEY, linked_driver_id INTEGER DEFAULT NULL, access_level TEXT DEFAULT 'std')")
             con.execute("INSERT OR IGNORE INTO clients (user_id) VALUES (?)", (m.from_user.id,))
-            con.commit()
-    except Exception as e:
-        logging.error(f"Error in /start: {e}")
+    except: pass
 
     kb = ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="🚖 ЗАКАЗАТЬ ПОТЕХУ", web_app=WebAppInfo(url=APP_URL))],
         [KeyboardButton(text="👤 Моя Светлица"), KeyboardButton(text="🔑 Код Ямщика")]
     ], resize_keyboard=True)
-    
     await m.answer(WELCOME_TEXT, reply_markup=kb)
 
-# 2. ПРИВЯЗКА КОДА
+# 2. SPECIFIC TEXT HANDLERS (PRIORITY LEVEL 1)
 @dp.message(F.text == "🔑 Код Ямщика")
-async def link_ask(m: types.Message): await m.answer("Введите код:")
+async def link_ask(m: types.Message): await m.answer("Введите код ямщика:")
 
+@dp.message(F.text == "👤 Моя Светлица")
+async def cab(m: types.Message):
+    uid = m.from_user.id
+    if uid == OWNER_ID:
+        kb = [[InlineKeyboardButton(text="📥 Заявки", callback_data="adm_reqs")],
+              [InlineKeyboardButton(text="📋 Ямщики", callback_data="adm_list")],
+              [InlineKeyboardButton(text="📢 Рассылка", callback_data="adm_cast")],
+              [InlineKeyboardButton(text="💎 Партнёр Артели", callback_data="partner")]]
+        return await m.answer("👑 <b>КАБИНЕТ СТАРОСТЫ</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    
+    drv = get_driver(uid)
+    if drv and drv['status'] == 'active':
+        kb = [[InlineKeyboardButton(text="🎛 Репертуар", callback_data="menu_tgl")],
+              [InlineKeyboardButton(text="➕ Своя услуга", callback_data="add_custom")],
+              [InlineKeyboardButton(text="⚙️ Коды", callback_data="settings")],
+              [InlineKeyboardButton(text="💎 Партнёр Артели", callback_data="partner")]]
+        await m.answer(
+            f"🪪 <b>ЯМЩИК: {drv['fio']}</b>\n🔑 Публичный: <code>{drv['access_code']}</code>\n💎 VIP: <code>{drv['vip_code']}</code>", 
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        return
+    
+    kb = [[InlineKeyboardButton(text="💎 Партнёр Артели", callback_data="partner")]]
+    await m.answer("👤 <b>КАБИНЕТ ПАССАЖИРА</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+# 3. GENERIC CODE HANDLER (PRIORITY LEVEL 2 - CATCH ALL)
+# Сюда попадет текст, только если он не совпал с кнопками выше
 @dp.message(F.text & ~F.text.startswith("/"))
 async def process_code(m: types.Message):
     code = m.text.strip().upper()
+    
+    # Защита от случайных сообщений: Код не может быть длиннее 15 символов
+    if len(code) > 15:
+        return 
+
     with get_db_connection() as con:
         drv = con.execute("SELECT user_id, fio, access_code, vip_code FROM drivers WHERE (access_code=? OR vip_code=?) AND status='active'", (code, code)).fetchone()
         pending = None
@@ -282,7 +269,6 @@ async def process_code(m: types.Message):
         did = drv['user_id']
         name = drv['fio']
         c2 = drv['vip_code']
-        
         lvl = 'vip' if code == c2 else 'std'
         info = "VIP 👑" if lvl == 'vip' else "ОБЫЧНЫЙ 👤"
         
@@ -296,78 +282,41 @@ async def process_code(m: types.Message):
     elif pending:
         await m.answer(f"❌ <b>Ямщик не работает!</b>\nСтатус: {pending['status']}.")
     else:
-        if len(code) < 10:
-             await m.answer("❌ <b>Код не найден!</b>")
+        # Если это похоже на код (короткий), но его нет
+        await m.answer("❌ <b>Код не найден!</b>")
+
+# 4. CALLBACKS
+@dp.callback_query(F.data == "partner")
+async def show_partner(c: types.CallbackQuery): await c.message.answer(PARTNER_TEXT); await c.answer()
 
 @dp.callback_query(F.data.startswith("pass_yes_"))
 async def py(c: types.CallbackQuery):
     _, _, cid, lvl = c.data.split("_")
     did = c.from_user.id
-    with get_db_connection() as con: 
-        con.execute("UPDATE clients SET linked_driver_id=?, access_level=? WHERE user_id=?", (did, lvl, cid))
+    with get_db_connection() as con: con.execute("UPDATE clients SET linked_driver_id=?, access_level=? WHERE user_id=?", (did, lvl, cid))
     await c.message.edit_text(f"✅ Пассажир подтвержден ({lvl.upper()})")
-    await safe_send(cid, "🎉 <b>Доступ открыт!</b>\nТеперь вы видите личные услуги ямщика.")
+    await safe_send(cid, "🎉 <b>Доступ открыт!</b>")
 
 @dp.callback_query(F.data.startswith("pass_no_"))
 async def pn(c: types.CallbackQuery):
     cid = c.data.split("_")[2]
     await c.message.edit_text("⛔ Отказ"); await safe_send(cid, "🚫 Ямщик отклонил вход.")
 
-# 3. БИРЖА
 @dp.callback_query(F.data.startswith("take_"))
 async def take(c: types.CallbackQuery):
     oid = c.data.split("take_")[1]; did = c.from_user.id
-    if oid not in market_orders: return await c.message.edit_text("❌ Опоздали! Заказ ушел.")
+    if oid not in market_orders: return await c.message.edit_text("❌ Опоздали!")
     ord = market_orders[oid]
-    with get_db_connection() as con: 
-        con.execute("UPDATE clients SET linked_driver_id=? WHERE user_id=?", (did, ord['uid']))
+    with get_db_connection() as con: con.execute("UPDATE clients SET linked_driver_id=? WHERE user_id=?", (did, ord['uid']))
     del market_orders[oid]
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🏁 ЗАВЕРШИТЬ", callback_data=f"fin_{ord['uid']}")]])
     await c.message.edit_text("✅ <b>Заказ ваш!</b>", reply_markup=kb)
     await safe_send(ord['uid'], "🚀 <b>Ямщик найден!</b>\nК вам едет карета.")
 
-# 4. КАБИНЕТЫ
-@dp.message(F.text == "👤 Моя Светлица")
-async def cab(m: types.Message):
-    uid = m.from_user.id
-    if uid == OWNER_ID:
-        kb = [[InlineKeyboardButton(text="📥 Заявки", callback_data="adm_reqs")],
-              [InlineKeyboardButton(text="📋 Ямщики", callback_data="adm_list")],
-              [InlineKeyboardButton(text="📢 Рассылка", callback_data="adm_cast")],
-              [InlineKeyboardButton(text="💎 Партнёр Артели", callback_data="partner")]]
-        return await m.answer("👑 <b>КАБИНЕТ СТАРОСТЫ</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-    
-    drv = get_driver(uid)
-    
-    if drv and drv['status'] == 'active':
-        kb = [[InlineKeyboardButton(text="🎛 Репертуар", callback_data="menu_tgl")],
-              [InlineKeyboardButton(text="➕ Своя услуга", callback_data="add_custom")],
-              [InlineKeyboardButton(text="⚙️ Коды", callback_data="settings")],
-              [InlineKeyboardButton(text="💎 Партнёр Артели", callback_data="partner")]]
-        
-        await m.answer(
-            f"🪪 <b>ЯМЩИК: {drv['fio']}</b>\n"
-            f"🔑 Публичный: <code>{drv['access_code']}</code>\n"
-            f"💎 VIP: <code>{drv['vip_code']}</code>", 
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
-        )
-        return
-    
-    kb = [[InlineKeyboardButton(text="💎 Партнёр Артели", callback_data="partner")]]
-    await m.answer("👤 <b>КАБИНЕТ ПАССАЖИРА</b>\nЗдесь пока пусто, но уютно.", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-
-# 5. ПАРТНЕР
-@dp.callback_query(F.data == "partner")
-async def show_partner(c: types.CallbackQuery):
-    await c.message.answer(PARTNER_TEXT)
-    await c.answer()
-
-# 6. НАСТРОЙКИ ЯМЩИКА
 @dp.callback_query(F.data == "menu_tgl")
 async def mt(c: types.CallbackQuery):
     did = c.from_user.id
-    with get_db_connection() as con: 
-        dis = [r['service_key'] for r in con.execute("SELECT service_key FROM disabled_services WHERE driver_id=?", (did,)).fetchall()]
+    with get_db_connection() as con: dis = [r['service_key'] for r in con.execute("SELECT service_key FROM disabled_services WHERE driver_id=?", (did,)).fetchall()]
     kb = []
     for k, v in CRAZY_SERVICES.items():
         s = "🔴" if k in dis else "🟢"
@@ -397,8 +346,7 @@ async def cc1(m: types.Message, state: FSMContext): await state.update_data(c1=m
 async def cc2(m: types.Message, state: FSMContext):
     d = await state.get_data()
     try:
-        with get_db_connection() as con: 
-            con.execute("UPDATE drivers SET access_code=?, vip_code=? WHERE user_id=?", (d['c1'], m.text.upper(), m.from_user.id))
+        with get_db_connection() as con: con.execute("UPDATE drivers SET access_code=?, vip_code=? WHERE user_id=?", (d['c1'], m.text.upper(), m.from_user.id))
         await m.answer("✅ Коды изменены!")
     except: await m.answer("❌ Занято.")
     await state.clear()
@@ -418,15 +366,13 @@ async def cp(m: types.Message, state: FSMContext):
 @dp.message(CustomSrv.cat)
 async def ccat(m: types.Message, state: FSMContext):
     d = await state.get_data()
-    with get_db_connection() as con: 
-        con.execute("INSERT INTO custom_services (driver_id, name, description, price, category) VALUES (?,?,?,?,?)", (m.from_user.id, d['name'], d['desc'], d['price'], m.text))
+    with get_db_connection() as con: con.execute("INSERT INTO custom_services (driver_id, name, description, price, category) VALUES (?,?,?,?,?)", (m.from_user.id, d['name'], d['desc'], d['price'], m.text))
     await m.answer("✅ Добавлено!", reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="👤 Моя Светлица")]], resize_keyboard=True)); await state.clear()
 
-# 7. АДМИНКА
+# 5. ADMIN & REG
 @dp.callback_query(F.data == "adm_reqs")
 async def ar(c: types.CallbackQuery):
-    with get_db_connection() as con: 
-        rs = con.execute("SELECT user_id, fio, username FROM drivers WHERE status='pending'").fetchall()
+    with get_db_connection() as con: rs = con.execute("SELECT user_id, fio, username FROM drivers WHERE status='pending'").fetchall()
     if not rs: return await c.message.answer("Пусто.")
     for r in rs:
         kb = [[InlineKeyboardButton(text="✅", callback_data=f"ok_{r['user_id']}"), InlineKeyboardButton(text="❌", callback_data=f"no_{r['user_id']}")]
@@ -453,8 +399,7 @@ async def ano(c: types.CallbackQuery):
 
 @dp.callback_query(F.data == "adm_list")
 async def al(c: types.CallbackQuery):
-    with get_db_connection() as con: 
-        ds = con.execute("SELECT user_id, fio, status FROM drivers WHERE role!='owner'").fetchall()
+    with get_db_connection() as con: ds = con.execute("SELECT user_id, fio, status FROM drivers WHERE role!='owner'").fetchall()
     for d in ds:
         kb = [[InlineKeyboardButton(text="Блок", callback_data=f"blk_{d['user_id']}"), InlineKeyboardButton(text="Разблок", callback_data=f"unl_{d['user_id']}")]
              ,[InlineKeyboardButton(text="Письмо", callback_data=f"msg_{d['user_id']}")]]
@@ -477,12 +422,10 @@ async def amss(m: types.Message, state: FSMContext):
 async def cast(c: types.CallbackQuery, state: FSMContext): await c.message.answer("Текст:"); await state.set_state("bc")
 @dp.message(F.state == "bc")
 async def casts(m: types.Message, state: FSMContext):
-    with get_db_connection() as con: 
-        us = con.execute("SELECT user_id FROM clients UNION SELECT user_id FROM drivers").fetchall()
+    with get_db_connection() as con: us = con.execute("SELECT user_id FROM clients UNION SELECT user_id FROM drivers").fetchall()
     for u in us: await safe_send(u[0], f"📢 {m.text}"); 
     await m.answer("Разослано."); await state.clear()
 
-# 8. СИСТЕМНЫЕ
 @dp.callback_query(F.data == "back")
 async def bck(c: types.CallbackQuery): await c.message.delete(); await cab(c.message)
 
