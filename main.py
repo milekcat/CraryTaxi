@@ -10,16 +10,41 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, FSInputFile
 from aiogram.client.default import DefaultBotProperties
 
 # ==========================================
-# ⚙️ НАСТРОЙКИ
+# ⚙️ НАСТРОЙКИ И КОНСТАНТЫ
 # ==========================================
 logging.basicConfig(level=logging.INFO)
 API_TOKEN = os.getenv("API_TOKEN")
-OWNER_ID = 6004764782 
+OWNER_ID = 6004764782
 APP_URL = "https://tazyy-milekcat.amvera.io"
+
+# Текст партнера (HTML)
+PARTNER_TEXT = (
+    "💎 <b>ПАРТНЁР АРТЕЛИ</b>\n\n"
+    "Наш генеральный спонсор и друг — <b>KWORK</b>.\n"
+    "Лучшая биржа фриланса для бояр и купцов.\n\n"
+    "<i>Здесь могла быть ваша реклама или ссылка на канал.</i>"
+)
+
+# Красивое приветствие
+WELCOME_TEXT = (
+    "📜 <b>УКАЗ ПО АРТЕЛИ «ВЕСЁЛЫЙ ИЗВОЗЧИК»</b>\n"
+    "━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    "Приветствуем тебя, добрый человек!\n"
+    "Здесь не просто такси, здесь — <b>Душа</b>.\n\n"
+    "🎭 <b>ЧТО МЫ МОЖЕМ:</b>\n"
+    "• <b>Утешить:</b> Ямщик-психолог выслушает.\n"
+    "• <b>Развлечь:</b> Песни, пляски, медведи.\n"
+    "• <b>Удивить:</b> Сожжем карету за ваши деньги.\n\n"
+    "👇 <b>КАК ПОЛЬЗОВАТЬСЯ:</b>\n"
+    "1. Жми <b>«Заказать потеху»</b> для вызова.\n"
+    "2. Введи <b>«Код Ямщика»</b>, если уже сел в сани.\n"
+    "3. Загляни в <b>«Светлицу»</b> для настроек.\n\n"
+    "<i>Поехали, с ветерком!</i> 🐎💨"
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 HTML_FILE = os.path.join(BASE_DIR, 'index.html')
@@ -33,7 +58,7 @@ active_orders = {}
 market_orders = {}
 
 # ==========================================
-# 📜 УСЛУГИ (ПОЛНЫЙ СПИСОК 20 ШТ)
+# 📜 УСЛУГИ (ПОЛНЫЙ СПИСОК)
 # ==========================================
 CATEGORIES_VIP = ["Большие", "Дикие"] 
 
@@ -65,13 +90,17 @@ CRAZY_SERVICES = {
 }
 
 # ==========================================
-# 🗄️ БАЗА ДАННЫХ
+# 🗄️ БАЗА ДАННЫХ (ROBUST)
 # ==========================================
-def init_db():
+def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row # ВАЖНО: Позволяет обращаться по имени колонок
+    return conn
+
+def init_db():
+    conn = get_db_connection()
     cur = conn.cursor()
     
-    # 0:user_id, 1:username, 2:fio, 3:car_info, 4:payment_info, 5:access_code, 6:vip_code, 7:status, 8:role, 9:balance, 10:lat, 11:lon
     cur.execute("""CREATE TABLE IF NOT EXISTS drivers (
         user_id INTEGER PRIMARY KEY, username TEXT, fio TEXT, car_info TEXT, payment_info TEXT, 
         access_code TEXT UNIQUE, vip_code TEXT UNIQUE, 
@@ -81,7 +110,7 @@ def init_db():
     cur.execute("CREATE TABLE IF NOT EXISTS custom_services (id INTEGER PRIMARY KEY AUTOINCREMENT, driver_id INTEGER, name TEXT, description TEXT, price INTEGER, category TEXT)")
     cur.execute("CREATE TABLE IF NOT EXISTS clients (user_id INTEGER PRIMARY KEY, linked_driver_id INTEGER DEFAULT NULL, access_level TEXT DEFAULT 'std')")
 
-    # Миграция (защищенная)
+    # Безопасные миграции
     def add_col(tbl, col, tp):
         try: cur.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {tp}")
         except: pass
@@ -92,7 +121,7 @@ def init_db():
     add_col("custom_services", "category", "TEXT DEFAULT 'Личные'")
     add_col("clients", "access_level", "TEXT DEFAULT 'std'")
 
-    # Админ
+    # Гарантия Админа
     cur.execute("INSERT OR IGNORE INTO drivers (user_id, fio, access_code, vip_code, status, role) VALUES (?, 'СТАРОСТА', 'ADMIN', 'ADMIN_VIP', 'active', 'owner')", (OWNER_ID,))
     cur.execute("UPDATE drivers SET role='owner', status='active' WHERE user_id=?", (OWNER_ID,))
     
@@ -101,34 +130,36 @@ def init_db():
 init_db()
 
 # ==========================================
-# 📡 WEB API
+# 📡 WEB API (BACKEND)
 # ==========================================
 async def get_services(request):
     uid = int(request.query.get('user_id', 0))
-    with sqlite3.connect(DB_PATH) as con:
+    with get_db_connection() as con:
         cli = con.execute("SELECT linked_driver_id, access_level FROM clients WHERE user_id=?", (uid,)).fetchone()
         
-        # Если нет водителя - отдаем базовый список для биржи
-        if not cli or not cli[0]:
+        # Сценарий БИРЖИ (Нет водителя)
+        if not cli or not cli['linked_driver_id']:
             res = [v for k, v in CRAZY_SERVICES.items() if v['cat'] not in CATEGORIES_VIP]
             return web.json_response(res)
         
-        did, level = cli[0], cli[1]
-        disabled = [r[0] for r in con.execute("SELECT service_key FROM disabled_services WHERE driver_id=?", (did,)).fetchall()]
+        did = cli['linked_driver_id']
+        level = cli['access_level']
+        
+        disabled = [r['service_key'] for r in con.execute("SELECT service_key FROM disabled_services WHERE driver_id=?", (did,)).fetchall()]
         customs = con.execute("SELECT name, description, price, category FROM custom_services WHERE driver_id=?", (did,)).fetchall()
     
     final = []
-    # Стандартные
+    # Фильтр стандартных
     for k, v in CRAZY_SERVICES.items():
         if k in disabled: continue
         if level != 'vip' and v['cat'] in CATEGORIES_VIP: continue
         final.append(v)
     
-    # Личные
+    # Фильтр личных
     for c in customs:
-        cat = c[3]
+        cat = c['category']
         if level != 'vip' and cat in CATEGORIES_VIP: continue
-        final.append({"name": c[0], "desc": c[1], "price": c[2], "cat": cat})
+        final.append({"name": c['name'], "desc": c['description'], "price": c['price'], "cat": cat})
         
     return web.json_response(final)
 
@@ -136,36 +167,41 @@ async def web_order(request):
     data = await request.json()
     uid, srv, price, lat, lon = data.get('user_id'), data.get('service'), data.get('price'), data.get('lat'), data.get('lon')
     
-    with sqlite3.connect(DB_PATH) as con:
+    with get_db_connection() as con:
         cli = con.execute("SELECT linked_driver_id FROM clients WHERE user_id=?", (uid,)).fetchone()
     
     map_url = f"https://www.google.com/maps?q={lat},{lon}"
     
-    if cli and cli[0]:
-        # Личный заказ
-        active_orders[uid] = {"driver_id": cli[0]}
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ПРИНЯТЬ", callback_data=f"ok_{uid}"), InlineKeyboardButton(text="❌ ОТКЛОНИТЬ", callback_data=f"fin_{uid}")]])
-        await bot.send_message(cli[0], f"🔔 <b>ЛИЧНЫЙ ЗАКАЗ!</b>\n🎭 {srv}\n💰 {price}₽\n📍 <a href='{map_url}'>КАРТА</a>", reply_markup=kb)
+    # ПРЯМОЙ ЗАКАЗ (ВОДИТЕЛЬ ЕСТЬ)
+    if cli and cli['linked_driver_id']:
+        did = cli['linked_driver_id']
+        active_orders[uid] = {"driver_id": did}
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ ПРИНЯТЬ", callback_data=f"ok_{uid}"), 
+             InlineKeyboardButton(text="❌ ОТКЛОНИТЬ", callback_data=f"fin_{uid}")]
+        ])
+        await bot.send_message(did, f"🔔 <b>ЛИЧНЫЙ ЗАКАЗ!</b>\n🎭 {srv}\n💰 {price}₽\n📍 <a href='{map_url}'>КАРТА</a>", reply_markup=kb)
         return web.json_response({"status": "ok"})
+    
+    # ЗАКАЗ НА БИРЖУ (ВОДИТЕЛЯ НЕТ)
     else:
-        # Биржа
         oid = f"m_{uid}_{int(datetime.now().timestamp())}"
         market_orders[oid] = {"uid": uid, "srv": srv, "price": price, "map": map_url}
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✋ ЗАБРАТЬ", callback_data=f"take_{oid}")]])
         
-        with sqlite3.connect(DB_PATH) as con:
+        with get_db_connection() as con:
             drvs = con.execute("SELECT user_id FROM drivers WHERE status='active' AND role!='owner'").fetchall()
         
         cnt = 0
         for d in drvs:
             try:
-                await bot.send_message(d[0], f"📥 <b>БИРЖА:</b> {srv} ({price}₽)", reply_markup=kb)
+                await bot.send_message(d['user_id'], f"📥 <b>БИРЖА:</b> {srv} ({price}₽)\n📍 <a href='{map_url}'>Показать на карте</a>", reply_markup=kb)
                 cnt += 1
             except: pass
         return web.json_response({"status": "ok_market" if cnt > 0 else "no_active_drivers"})
 
 # ==========================================
-# 🤖 BOT HANDLERS
+# 🤖 BOT HANDLERS (FSM & LOGIC)
 # ==========================================
 class DriverReg(StatesGroup): fio=State(); car=State(); pay=State(); code1=State(); code2=State()
 class CustomSrv(StatesGroup): name=State(); desc=State(); price=State(); cat=State()
@@ -173,34 +209,47 @@ class ChangeCodes(StatesGroup): c1=State(); c2=State()
 class AdminMsg(StatesGroup): text=State()
 class AdminHR(StatesGroup): text=State()
 
+# ПОМОЩНИКИ
 def get_driver(uid):
-    with sqlite3.connect(DB_PATH) as con: return con.execute("SELECT * FROM drivers WHERE user_id=?", (uid,)).fetchone()
+    with get_db_connection() as con: 
+        return con.execute("SELECT * FROM drivers WHERE user_id=?", (uid,)).fetchone()
 
 async def safe_send(chat_id, text, kb=None):
     try: await bot.send_message(chat_id, text, reply_markup=kb); return True
     except: return False
 
+# 1. START & WELCOME
 @dp.message(Command("start"))
 async def start(m: types.Message, state: FSMContext):
     await state.clear()
-    with sqlite3.connect(DB_PATH) as con: con.execute("INSERT OR IGNORE INTO clients (user_id) VALUES (?)", (m.from_user.id,))
-    kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🚖 ЗАКАЗАТЬ ПОТЕХУ", web_app=WebAppInfo(url=APP_URL))],
-                                       [KeyboardButton(text="👤 Моя Светлица"), KeyboardButton(text="🔑 Код Ямщика")]], resize_keyboard=True)
-    await m.answer("🐎 <b>Артель приветствует!</b>", reply_markup=kb)
+    with get_db_connection() as con: 
+        con.execute("INSERT OR IGNORE INTO clients (user_id) VALUES (?)", (m.from_user.id,))
+    
+    kb = ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🚖 ЗАКАЗАТЬ ПОТЕХУ", web_app=WebAppInfo(url=APP_URL))],
+        [KeyboardButton(text="👤 Моя Светлица"), KeyboardButton(text="🔑 Код Ямщика")]
+    ], resize_keyboard=True)
+    
+    await m.answer(WELCOME_TEXT, reply_markup=kb)
 
-# --- ПРИВЯЗКА (ВЕРИФИКАЦИЯ) ---
+# 2. ПРИВЯЗКА КОДА (ВЕРИФИКАЦИЯ)
 @dp.message(F.text == "🔑 Код Ямщика")
 async def link_ask(m: types.Message): await m.answer("Введите код:")
 
 @dp.message(F.text & ~F.text.startswith("/"))
 async def process_code(m: types.Message):
     code = m.text.strip().upper()
-    with sqlite3.connect(DB_PATH) as con:
-        # Проверяем оба кода
+    with get_db_connection() as con:
         drv = con.execute("SELECT user_id, fio, access_code, vip_code FROM drivers WHERE (access_code=? OR vip_code=?) AND status='active'", (code, code)).fetchone()
-    
+        pending = None
+        if not drv:
+            pending = con.execute("SELECT status FROM drivers WHERE access_code=? OR vip_code=?", (code, code)).fetchone()
+
     if drv:
-        did, name, c1, c2 = drv
+        did = drv['user_id']
+        name = drv['fio']
+        c2 = drv['vip_code']
+        
         lvl = 'vip' if code == c2 else 'std'
         info = "VIP 👑" if lvl == 'vip' else "ОБЫЧНЫЙ 👤"
         
@@ -210,59 +259,86 @@ async def process_code(m: types.Message):
         
         await safe_send(did, f"🚨 <b>ПРОВЕРКА!</b>\nПассажир ввел {info} код: {code}\nОн у вас в машине?", kb)
         await m.answer(f"⏳ <b>Ждем подтверждения...</b>\nЯмщик {name} должен кивнуть.")
-    else: pass
+    
+    elif pending:
+        await m.answer(f"❌ <b>Ямщик не работает!</b>\nСтатус: {pending['status']}.")
+    else:
+        # Не отвечаем на обычный текст, чтобы не спамить, если это просто чат
+        # Но если это явно похоже на код (короткий), можно ответить
+        if len(code) < 10:
+             await m.answer("❌ <b>Код не найден!</b>")
 
 @dp.callback_query(F.data.startswith("pass_yes_"))
 async def py(c: types.CallbackQuery):
     _, _, cid, lvl = c.data.split("_")
     did = c.from_user.id
-    with sqlite3.connect(DB_PATH) as con: con.execute("UPDATE clients SET linked_driver_id=?, access_level=? WHERE user_id=?", (did, lvl, cid))
+    with get_db_connection() as con: 
+        con.execute("UPDATE clients SET linked_driver_id=?, access_level=? WHERE user_id=?", (did, lvl, cid))
     await c.message.edit_text(f"✅ Пассажир подтвержден ({lvl.upper()})")
-    await safe_send(cid, "🎉 Доступ открыт!")
+    await safe_send(cid, "🎉 <b>Доступ открыт!</b>\nТеперь вы видите личные услуги ямщика.")
 
 @dp.callback_query(F.data.startswith("pass_no_"))
 async def pn(c: types.CallbackQuery):
     cid = c.data.split("_")[2]
     await c.message.edit_text("⛔ Отказ"); await safe_send(cid, "🚫 Ямщик отклонил вход.")
 
-# --- БИРЖА ---
+# 3. БИРЖА
 @dp.callback_query(F.data.startswith("take_"))
 async def take(c: types.CallbackQuery):
     oid = c.data.split("take_")[1]; did = c.from_user.id
-    if oid not in market_orders: return await c.message.edit_text("❌ Опоздали!")
+    if oid not in market_orders: return await c.message.edit_text("❌ Опоздали! Заказ ушел.")
     ord = market_orders[oid]
-    with sqlite3.connect(DB_PATH) as con: con.execute("UPDATE clients SET linked_driver_id=? WHERE user_id=?", (did, ord['uid']))
+    with get_db_connection() as con: 
+        con.execute("UPDATE clients SET linked_driver_id=? WHERE user_id=?", (did, ord['uid']))
     del market_orders[oid]
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🏁 ЗАВЕРШИТЬ", callback_data=f"fin_{ord['uid']}")]])
     await c.message.edit_text("✅ <b>Заказ ваш!</b>", reply_markup=kb)
-    await safe_send(ord['uid'], "🚀 Ямщик найден!")
+    await safe_send(ord['uid'], "🚀 <b>Ямщик найден!</b>\nК вам едет карета.")
 
-# --- КАБИНЕТЫ ---
+# 4. КАБИНЕТЫ (FIXED LOGIC)
 @dp.message(F.text == "👤 Моя Светлица")
 async def cab(m: types.Message):
     uid = m.from_user.id
     if uid == OWNER_ID:
         kb = [[InlineKeyboardButton(text="📥 Заявки", callback_data="adm_reqs")],
               [InlineKeyboardButton(text="📋 Ямщики", callback_data="adm_list")],
-              [InlineKeyboardButton(text="📢 Рассылка", callback_data="adm_cast")]]
+              [InlineKeyboardButton(text="📢 Рассылка", callback_data="adm_cast")],
+              [InlineKeyboardButton(text="💎 Партнёр Артели", callback_data="partner")]]
         return await m.answer("👑 <b>КАБИНЕТ СТАРОСТЫ</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     
     drv = get_driver(uid)
-    # ИСПРАВЛЕНО: Индекс статуса теперь точно 7, так как мы добавили колонки
-    if drv and drv[7] == 'active':
+    
+    # ПРОВЕРКА ПО ИМЕНИ КОЛОНКИ (ТЕПЕРЬ НАДЕЖНО)
+    if drv and drv['status'] == 'active':
         kb = [[InlineKeyboardButton(text="🎛 Репертуар", callback_data="menu_tgl")],
               [InlineKeyboardButton(text="➕ Своя услуга", callback_data="add_custom")],
-              [InlineKeyboardButton(text="⚙️ Коды", callback_data="settings")]]
-        await m.answer(f"🪪 <b>ЯМЩИК: {drv[2]}</b>\n🔑 Код: <code>{drv[5]}</code>\n💎 VIP: <code>{drv[6]}</code>", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+              [InlineKeyboardButton(text="⚙️ Коды", callback_data="settings")],
+              [InlineKeyboardButton(text="💎 Партнёр Артели", callback_data="partner")]]
+        
+        await m.answer(
+            f"🪪 <b>ЯМЩИК: {drv['fio']}</b>\n"
+            f"🔑 Публичный: <code>{drv['access_code']}</code>\n"
+            f"💎 VIP: <code>{drv['vip_code']}</code>", 
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+        )
         return
     
-    await m.answer("👤 <b>КАБИНЕТ ПАССАЖИРА</b>")
+    # Кабинет пассажира
+    kb = [[InlineKeyboardButton(text="💎 Партнёр Артели", callback_data="partner")]]
+    await m.answer("👤 <b>КАБИНЕТ ПАССАЖИРА</b>\nЗдесь пока пусто, но уютно.", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-# --- ЯМЩИК (НАСТРОЙКИ) ---
+# 5. ПАРТНЕР
+@dp.callback_query(F.data == "partner")
+async def show_partner(c: types.CallbackQuery):
+    await c.message.answer(PARTNER_TEXT)
+    await c.answer()
+
+# 6. НАСТРОЙКИ ЯМЩИКА
 @dp.callback_query(F.data == "menu_tgl")
 async def mt(c: types.CallbackQuery):
     did = c.from_user.id
-    with sqlite3.connect(DB_PATH) as con: dis = [r[0] for r in con.execute("SELECT service_key FROM disabled_services WHERE driver_id=?", (did,)).fetchall()]
+    with get_db_connection() as con: 
+        dis = [r['service_key'] for r in con.execute("SELECT service_key FROM disabled_services WHERE driver_id=?", (did,)).fetchall()]
     kb = []
     for k, v in CRAZY_SERVICES.items():
         s = "🔴" if k in dis else "🟢"
@@ -273,7 +349,7 @@ async def mt(c: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("tg_"))
 async def tg(c: types.CallbackQuery):
     k = c.data.split("_")[1]; did = c.from_user.id
-    with sqlite3.connect(DB_PATH) as con:
+    with get_db_connection() as con:
         if con.execute("SELECT 1 FROM disabled_services WHERE driver_id=? AND service_key=?", (did, k)).fetchone():
             con.execute("DELETE FROM disabled_services WHERE driver_id=? AND service_key=?", (did, k))
         else: con.execute("INSERT INTO disabled_services VALUES (?, ?)", (did, k))
@@ -292,7 +368,8 @@ async def cc1(m: types.Message, state: FSMContext): await state.update_data(c1=m
 async def cc2(m: types.Message, state: FSMContext):
     d = await state.get_data()
     try:
-        with sqlite3.connect(DB_PATH) as con: con.execute("UPDATE drivers SET access_code=?, vip_code=? WHERE user_id=?", (d['c1'], m.text.upper(), m.from_user.id))
+        with get_db_connection() as con: 
+            con.execute("UPDATE drivers SET access_code=?, vip_code=? WHERE user_id=?", (d['c1'], m.text.upper(), m.from_user.id))
         await m.answer("✅ Коды изменены!")
     except: await m.answer("❌ Занято.")
     await state.clear()
@@ -312,18 +389,20 @@ async def cp(m: types.Message, state: FSMContext):
 @dp.message(CustomSrv.cat)
 async def ccat(m: types.Message, state: FSMContext):
     d = await state.get_data()
-    with sqlite3.connect(DB_PATH) as con: con.execute("INSERT INTO custom_services (driver_id, name, description, price, category) VALUES (?,?,?,?,?)", (m.from_user.id, d['name'], d['desc'], d['price'], m.text))
+    with get_db_connection() as con: 
+        con.execute("INSERT INTO custom_services (driver_id, name, description, price, category) VALUES (?,?,?,?,?)", (m.from_user.id, d['name'], d['desc'], d['price'], m.text))
     await m.answer("✅ Добавлено!", reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="👤 Моя Светлица")]], resize_keyboard=True)); await state.clear()
 
-# --- АДМИНКА ---
+# 7. АДМИНКА
 @dp.callback_query(F.data == "adm_reqs")
 async def ar(c: types.CallbackQuery):
-    with sqlite3.connect(DB_PATH) as con: rs = con.execute("SELECT user_id, fio, username FROM drivers WHERE status='pending'").fetchall()
+    with get_db_connection() as con: 
+        rs = con.execute("SELECT user_id, fio, username FROM drivers WHERE status='pending'").fetchall()
     if not rs: return await c.message.answer("Пусто.")
     for r in rs:
-        kb = [[InlineKeyboardButton(text="✅", callback_data=f"ok_{r[0]}"), InlineKeyboardButton(text="❌", callback_data=f"no_{r[0]}")],
-              [InlineKeyboardButton(text="📞", callback_data=f"talk_{r[0]}")]]
-        await c.message.answer(f"📝 {r[1]} (@{r[2]})", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        kb = [[InlineKeyboardButton(text="✅", callback_data=f"ok_{r['user_id']}"), InlineKeyboardButton(text="❌", callback_data=f"no_{r['user_id']}")]
+             ,[InlineKeyboardButton(text="📞", callback_data=f"talk_{r['user_id']}")]]
+        await c.message.answer(f"📝 {r['fio']} (@{r['username']})", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 @dp.callback_query(F.data.startswith("talk_"))
 async def talk(c: types.CallbackQuery, state: FSMContext): await state.update_data(trg=c.data.split("_")[1]); await c.message.answer("Вопрос:"); await state.set_state(AdminHR.text)
@@ -334,30 +413,31 @@ async def ts(m: types.Message, state: FSMContext):
 @dp.callback_query(F.data.startswith("ok_"))
 async def aok(c: types.CallbackQuery):
     did = c.data.split("_")[1]
-    with sqlite3.connect(DB_PATH) as con: con.execute("UPDATE drivers SET status='active' WHERE user_id=?", (did,))
+    with get_db_connection() as con: con.execute("UPDATE drivers SET status='active' WHERE user_id=?", (did,))
     await c.answer("Ок"); await safe_send(did, "✅ Принят!")
 
 @dp.callback_query(F.data.startswith("no_"))
 async def ano(c: types.CallbackQuery):
     did = c.data.split("_")[1]
-    with sqlite3.connect(DB_PATH) as con: con.execute("DELETE FROM drivers WHERE user_id=?", (did,))
+    with get_db_connection() as con: con.execute("DELETE FROM drivers WHERE user_id=?", (did,))
     await c.answer("Нет"); await safe_send(did, "❌ Отказ")
 
 @dp.callback_query(F.data == "adm_list")
 async def al(c: types.CallbackQuery):
-    with sqlite3.connect(DB_PATH) as con: ds = con.execute("SELECT user_id, fio, status FROM drivers WHERE role!='owner'").fetchall()
+    with get_db_connection() as con: 
+        ds = con.execute("SELECT user_id, fio, status FROM drivers WHERE role!='owner'").fetchall()
     for d in ds:
-        kb = [[InlineKeyboardButton(text="Блок", callback_data=f"blk_{d[0]}"), InlineKeyboardButton(text="Разблок", callback_data=f"unl_{d[0]}")],
-              [InlineKeyboardButton(text="Письмо", callback_data=f"msg_{d[0]}")]]
-        await c.message.answer(f"👤 {d[1]} | {d[2]}", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        kb = [[InlineKeyboardButton(text="Блок", callback_data=f"blk_{d['user_id']}"), InlineKeyboardButton(text="Разблок", callback_data=f"unl_{d['user_id']}")]
+             ,[InlineKeyboardButton(text="Письмо", callback_data=f"msg_{d['user_id']}")]]
+        await c.message.answer(f"👤 {d['fio']} | {d['status']}", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 @dp.callback_query(F.data.startswith("blk_"))
 async def blk(c: types.CallbackQuery):
-    with sqlite3.connect(DB_PATH) as con: con.execute("UPDATE drivers SET status='blocked' WHERE user_id=?", (c.data.split("_")[1],))
+    with get_db_connection() as con: con.execute("UPDATE drivers SET status='blocked' WHERE user_id=?", (c.data.split("_")[1],))
     await c.answer("Блок")
 @dp.callback_query(F.data.startswith("unl_"))
 async def unl(c: types.CallbackQuery):
-    with sqlite3.connect(DB_PATH) as con: con.execute("UPDATE drivers SET status='active' WHERE user_id=?", (c.data.split("_")[1],))
+    with get_db_connection() as con: con.execute("UPDATE drivers SET status='active' WHERE user_id=?", (c.data.split("_")[1],))
     await c.answer("Разблок")
 @dp.callback_query(F.data.startswith("msg_"))
 async def ams(c: types.CallbackQuery, state: FSMContext): await state.update_data(trg=c.data.split("_")[1]); await c.message.answer("Текст:"); await state.set_state(AdminMsg.text)
@@ -368,12 +448,15 @@ async def amss(m: types.Message, state: FSMContext):
 async def cast(c: types.CallbackQuery, state: FSMContext): await c.message.answer("Текст:"); await state.set_state("bc")
 @dp.message(F.state == "bc")
 async def casts(m: types.Message, state: FSMContext):
-    with sqlite3.connect(DB_PATH) as con: us = con.execute("SELECT user_id FROM clients UNION SELECT user_id FROM drivers").fetchall()
-    for u in us: await safe_send(u[0], f"📢 {m.text}"); await m.answer("Разослано."); await state.clear()
+    with get_db_connection() as con: 
+        us = con.execute("SELECT user_id FROM clients UNION SELECT user_id FROM drivers").fetchall()
+    for u in us: await safe_send(u[0], f"📢 {m.text}"); 
+    await m.answer("Разослано."); await state.clear()
 
-# --- СИСТЕМА ---
+# 8. СИСТЕМНЫЕ
 @dp.callback_query(F.data == "back")
-async def bck(c: types.CallbackQuery): await c.message.delete(); await cabinet(c.message)
+async def bck(c: types.CallbackQuery): await c.message.delete(); await cab(c.message)
+
 @dp.message(Command("drive"))
 async def reg(m: types.Message, state: FSMContext):
     if get_driver(m.from_user.id): return await m.answer("Уже в системе.")
@@ -390,19 +473,21 @@ async def rc1(m: types.Message, state: FSMContext): await state.update_data(c1=m
 async def rc2(m: types.Message, state: FSMContext):
     d = await state.get_data()
     try:
-        with sqlite3.connect(DB_PATH) as con:
+        with get_db_connection() as con:
             con.execute("INSERT INTO drivers (user_id, username, fio, car_info, payment_info, access_code, vip_code, status) VALUES (?,?,?,?,?,?,?, 'pending')",
                         (m.from_user.id, m.from_user.username, d['fio'], d['car'], d['pay'], d['c1'], m.text.upper()))
         await m.answer("📜 Заявка отправлена!")
         await safe_send(OWNER_ID, f"🔔 ЗАЯВКА!\n{d['fio']}")
     except: await m.answer("❌ Коды заняты.")
     await state.clear()
+
 @dp.callback_query(F.data.startswith("fin_"))
 async def fin(c: types.CallbackQuery):
     cid = int(c.data.split("_")[1])
-    with sqlite3.connect(DB_PATH) as con: con.execute("UPDATE clients SET linked_driver_id=NULL WHERE user_id=?", (cid,))
+    with get_db_connection() as con: con.execute("UPDATE clients SET linked_driver_id=NULL WHERE user_id=?", (cid,))
     if cid in active_orders: del active_orders[cid]
     await c.message.edit_text("🏁 ЗАВЕРШЕНО"); await safe_send(cid, "👋 Поездка окончена!")
+
 @dp.callback_query(F.data.startswith("ok_"))
 async def ok(c: types.CallbackQuery):
     cid = int(c.data.split("_")[1])
