@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: 'Georgia', serif;
+            background-color: #fdf5e6; /* Цвет старой бумаги */
+            color: #4a3b2a;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #8b0000; /* Темно-красный */
+            font-size: 24px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            border-bottom: 2px solid #8b0000;
+            padding-bottom: 10px;
+        }
+        .card {
+            background: #fff;
+            border: 2px solid #d4af37; /* Золотой */
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .card-title {
+            font-weight: bold;
+            font-size: 18px;
+            color: #8b0000;
+        }
+        .card-desc {
+            font-size: 14px;
+            margin: 5px 0;
+            font-style: italic;
+        }
+        .card-price {
+            font-weight: bold;
+            color: #2e8b57;
+            font-size: 16px;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background-color: #8b0000;
+            color: #fff;
+            text-align: center;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .btn:active {
+            background-color: #a52a2a;
+        }
+        .tab-bar {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 8px 15px;
+            background: #d4af37;
+            border-radius: 20px;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🐎 Весёлый Извозчик</h1>
+
+    <div class="tab-bar">
+        <div class="tab" onclick="filter('light')">Лайт</div>
+        <div class="tab" onclick="filter('hard')">Хард</div>
+        <div class="tab" onclick="filter('vip')">Царский</div>
+    </div>
+
+    <div id="services">
+        </div>
+
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+
+        const services = [
+            {id: 1, type: 'light', name: '🍬 Сладкий гостинец', desc: 'Ямщик с поклоном вручает леденец.', price: 0},
+            {id: 2, type: 'light', name: '👃 Перст в носу', desc: 'Ямщик всю дорогу в носу ковыряет.', price: 300},
+            {id: 3, type: 'hard', name: '👵 Ворчливая бабка', desc: 'Ролевая игра: Куда прешь, окаянный!', price: 800},
+            {id: 4, type: 'hard', name: '🐻 Медвежьи пляски', desc: 'Танцы на капоте на светофоре.', price: 15000},
+            {id: 5, type: 'vip', name: '🔥 Огненная колесница', desc: 'Сжигаем повозку на пустыре.', price: 1000000},
+            {id: 6, type: 'vip', name: '🕵️ Опричник (007)', desc: 'Тайная слежка и уход от погони.', price: 2000},
+        ];
+
+        function render(filterType) {
+            const container = document.getElementById('services');
+            container.innerHTML = '';
+            services.forEach(s => {
+                if (filterType && s.type !== filterType) return;
+                const div = document.createElement('div');
+                div.className = 'card';
+                div.innerHTML = `
+                    <div class="card-title">${s.name}</div>
+                    <div class="card-desc">${s.desc}</div>
+                    <div class="card-price">Мзда: ${s.price} ₽</div>
+                    <button class="btn" onclick="order('${s.name}', ${s.price})">Заказать</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function order(name, price) {
+            if (!tg.initDataUnsafe.user) {
+                alert("Откройте через Телеграм!");
+                return;
+            }
+            
+            // Отправка данных боту
+            fetch('/order', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    user_id: tg.initDataUnsafe.user.id,
+                    service: name,
+                    price: price
+                })
+            }).then(() => {
+                tg.close();
+            });
+        }
+
+        render('light'); // По умолчанию
+    </script>
+</body>
+</html>
