@@ -90,43 +90,67 @@ CRAZY_SERVICES = {
 }
 
 # ==========================================
-# 🗄️ БАЗА ДАННЫХ (ROBUST)
+# 🗄️ БАЗА ДАННЫХ (ARMORED EDITION)
 # ==========================================
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row # ВАЖНО: Позволяет обращаться по имени колонок
+    # timeout=10 ждет, если база заблокирована другим процессом
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn.row_factory = sqlite3.Row 
     return conn
 
 def init_db():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    cur.execute("""CREATE TABLE IF NOT EXISTS drivers (
-        user_id INTEGER PRIMARY KEY, username TEXT, fio TEXT, car_info TEXT, payment_info TEXT, 
-        access_code TEXT UNIQUE, vip_code TEXT UNIQUE, 
-        status TEXT DEFAULT 'pending', role TEXT DEFAULT 'driver', balance INTEGER DEFAULT 0, lat REAL, lon REAL)""")
-    
-    cur.execute("CREATE TABLE IF NOT EXISTS disabled_services (driver_id INTEGER, service_key TEXT, PRIMARY KEY(driver_id, service_key))")
-    cur.execute("CREATE TABLE IF NOT EXISTS custom_services (id INTEGER PRIMARY KEY AUTOINCREMENT, driver_id INTEGER, name TEXT, description TEXT, price INTEGER, category TEXT)")
-    cur.execute("CREATE TABLE IF NOT EXISTS clients (user_id INTEGER PRIMARY KEY, linked_driver_id INTEGER DEFAULT NULL, access_level TEXT DEFAULT 'std')")
+    logging.info(f"💾 [DB] Initializing database at {DB_PATH}...")
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # 1. DRIVERS
+        cur.execute("""CREATE TABLE IF NOT EXISTS drivers (
+            user_id INTEGER PRIMARY KEY, username TEXT, fio TEXT, car_info TEXT, payment_info TEXT, 
+            access_code TEXT UNIQUE, vip_code TEXT UNIQUE, 
+            status TEXT DEFAULT 'pending', role TEXT DEFAULT 'driver', balance INTEGER DEFAULT 0, lat REAL, lon REAL)""")
+        conn.commit()
+        logging.info("💾 [DB] Table 'drivers' OK.")
 
-    # Безопасные миграции
-    def add_col(tbl, col, tp):
-        try: cur.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {tp}")
-        except: pass
+        # 2. DISABLED SERVICES
+        cur.execute("CREATE TABLE IF NOT EXISTS disabled_services (driver_id INTEGER, service_key TEXT, PRIMARY KEY(driver_id, service_key))")
+        conn.commit()
+        logging.info("💾 [DB] Table 'disabled_services' OK.")
 
-    add_col("drivers", "vip_code", "TEXT UNIQUE")
-    add_col("drivers", "lat", "REAL")
-    add_col("drivers", "username", "TEXT")
-    add_col("custom_services", "category", "TEXT DEFAULT 'Личные'")
-    add_col("clients", "access_level", "TEXT DEFAULT 'std'")
+        # 3. CUSTOM SERVICES
+        cur.execute("CREATE TABLE IF NOT EXISTS custom_services (id INTEGER PRIMARY KEY AUTOINCREMENT, driver_id INTEGER, name TEXT, description TEXT, price INTEGER, category TEXT)")
+        conn.commit()
+        logging.info("💾 [DB] Table 'custom_services' OK.")
 
-    # Гарантия Админа
-    cur.execute("INSERT OR IGNORE INTO drivers (user_id, fio, access_code, vip_code, status, role) VALUES (?, 'СТАРОСТА', 'ADMIN', 'ADMIN_VIP', 'active', 'owner')", (OWNER_ID,))
-    cur.execute("UPDATE drivers SET role='owner', status='active' WHERE user_id=?", (OWNER_ID,))
-    
-    conn.commit(); conn.close()
+        # 4. CLIENTS (ТУТ БЫЛА ОШИБКА)
+        cur.execute("CREATE TABLE IF NOT EXISTS clients (user_id INTEGER PRIMARY KEY, linked_driver_id INTEGER DEFAULT NULL, access_level TEXT DEFAULT 'std')")
+        conn.commit()
+        logging.info("💾 [DB] Table 'clients' OK.")
 
+        # 5. МИГРАЦИИ (Добавление колонок, если их нет)
+        def add_col(tbl, col, tp):
+            try: cur.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {tp}")
+            except: pass
+        
+        add_col("drivers", "vip_code", "TEXT UNIQUE")
+        add_col("drivers", "lat", "REAL")
+        add_col("drivers", "username", "TEXT")
+        add_col("custom_services", "category", "TEXT DEFAULT 'Личные'")
+        add_col("clients", "access_level", "TEXT DEFAULT 'std'")
+        conn.commit()
+
+        # 6. СОЗДАНИЕ АДМИНА
+        cur.execute("INSERT OR IGNORE INTO drivers (user_id, fio, access_code, vip_code, status, role) VALUES (?, 'СТАРОСТА', 'ADMIN', 'ADMIN_VIP', 'active', 'owner')", (OWNER_ID,))
+        cur.execute("UPDATE drivers SET role='owner', status='active' WHERE user_id=?", (OWNER_ID,))
+        conn.commit()
+        
+        conn.close()
+        logging.info("✅ [DB] Initialization complete.")
+
+    except Exception as e:
+        logging.error(f"❌ [DB] CRITICAL ERROR: {e}")
+
+# Запускаем инициализацию ПРИ СТАРТЕ скрипта
 init_db()
 
 # ==========================================
@@ -135,6 +159,7 @@ init_db()
 async def get_services(request):
     uid = int(request.query.get('user_id', 0))
     with get_db_connection() as con:
+        # Пытаемся получить клиента, если нет - создаем пустышку в памяти (не в базе), чтобы не крашилось
         cli = con.execute("SELECT linked_driver_id, access_level FROM clients WHERE user_id=?", (uid,)).fetchone()
         
         # Сценарий БИРЖИ (Нет водителя)
@@ -218,13 +243,21 @@ async def safe_send(chat_id, text, kb=None):
     try: await bot.send_message(chat_id, text, reply_markup=kb); return True
     except: return False
 
-# 1. START & WELCOME
+# 1. START & WELCOME (FIXED CLIENT INSERT)
 @dp.message(Command("start"))
 async def start(m: types.Message, state: FSMContext):
     await state.clear()
-    with get_db_connection() as con: 
-        con.execute("INSERT OR IGNORE INTO clients (user_id) VALUES (?)", (m.from_user.id,))
     
+    try:
+        with get_db_connection() as con: 
+            # Вот тут падало, теперь мы это ловим. 
+            # И если таблицы нет (что невозможно с новой init_db), то мы ее создадим на лету в крайнем случае
+            con.execute("CREATE TABLE IF NOT EXISTS clients (user_id INTEGER PRIMARY KEY, linked_driver_id INTEGER DEFAULT NULL, access_level TEXT DEFAULT 'std')")
+            con.execute("INSERT OR IGNORE INTO clients (user_id) VALUES (?)", (m.from_user.id,))
+            con.commit()
+    except Exception as e:
+        logging.error(f"Error in /start: {e}")
+
     kb = ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="🚖 ЗАКАЗАТЬ ПОТЕХУ", web_app=WebAppInfo(url=APP_URL))],
         [KeyboardButton(text="👤 Моя Светлица"), KeyboardButton(text="🔑 Код Ямщика")]
@@ -232,7 +265,7 @@ async def start(m: types.Message, state: FSMContext):
     
     await m.answer(WELCOME_TEXT, reply_markup=kb)
 
-# 2. ПРИВЯЗКА КОДА (ВЕРИФИКАЦИЯ)
+# 2. ПРИВЯЗКА КОДА
 @dp.message(F.text == "🔑 Код Ямщика")
 async def link_ask(m: types.Message): await m.answer("Введите код:")
 
@@ -263,8 +296,6 @@ async def process_code(m: types.Message):
     elif pending:
         await m.answer(f"❌ <b>Ямщик не работает!</b>\nСтатус: {pending['status']}.")
     else:
-        # Не отвечаем на обычный текст, чтобы не спамить, если это просто чат
-        # Но если это явно похоже на код (короткий), можно ответить
         if len(code) < 10:
              await m.answer("❌ <b>Код не найден!</b>")
 
@@ -295,7 +326,7 @@ async def take(c: types.CallbackQuery):
     await c.message.edit_text("✅ <b>Заказ ваш!</b>", reply_markup=kb)
     await safe_send(ord['uid'], "🚀 <b>Ямщик найден!</b>\nК вам едет карета.")
 
-# 4. КАБИНЕТЫ (FIXED LOGIC)
+# 4. КАБИНЕТЫ
 @dp.message(F.text == "👤 Моя Светлица")
 async def cab(m: types.Message):
     uid = m.from_user.id
@@ -308,7 +339,6 @@ async def cab(m: types.Message):
     
     drv = get_driver(uid)
     
-    # ПРОВЕРКА ПО ИМЕНИ КОЛОНКИ (ТЕПЕРЬ НАДЕЖНО)
     if drv and drv['status'] == 'active':
         kb = [[InlineKeyboardButton(text="🎛 Репертуар", callback_data="menu_tgl")],
               [InlineKeyboardButton(text="➕ Своя услуга", callback_data="add_custom")],
@@ -323,7 +353,6 @@ async def cab(m: types.Message):
         )
         return
     
-    # Кабинет пассажира
     kb = [[InlineKeyboardButton(text="💎 Партнёр Артели", callback_data="partner")]]
     await m.answer("👤 <b>КАБИНЕТ ПАССАЖИРА</b>\nЗдесь пока пусто, но уютно.", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
