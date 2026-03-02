@@ -1,13 +1,11 @@
-version: null
 meta:
   environment: python
   toolchain:
     name: pip
-    version: "3.11"
+    version: 3.11
 build:
   requirementsPath: requirements.txt
-  useCache: true
 run:
+  scriptName: main.py
   persistenceMount: /data
-  containerPort: "8080"
-serviceType: compute
+  containerPort: 8080
