@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -46,6 +46,7 @@ WELCOME_TEXT = (
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 HTML_FILE = os.path.join(BASE_DIR, 'index.html')
+# Используем постоянное хранилище Amvera /data
 DB_PATH = "/data/taxi_db.sqlite" if os.path.exists("/data") else os.path.join(BASE_DIR, "taxi_db.sqlite")
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
@@ -108,6 +109,7 @@ def init_db():
         cur.execute("CREATE TABLE IF NOT EXISTS clients (user_id INTEGER PRIMARY KEY, linked_driver_id INTEGER DEFAULT NULL, access_level TEXT DEFAULT 'std')")
         conn.commit()
 
+        # Миграции
         def add_col(tbl, col, tp):
             try: cur.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {tp}")
             except: pass
@@ -119,6 +121,7 @@ def init_db():
         add_col("clients", "access_level", "TEXT DEFAULT 'std'")
         conn.commit()
 
+        # Админ
         cur.execute("INSERT OR IGNORE INTO drivers (user_id, fio, access_code, vip_code, status, role) VALUES (?, 'СТАРОСТА', 'ADMIN', 'ADMIN_VIP', 'active', 'owner')", (OWNER_ID,))
         cur.execute("UPDATE drivers SET role='owner', status='active' WHERE user_id=?", (OWNER_ID,))
         conn.commit()
@@ -221,12 +224,15 @@ async def start(m: types.Message, state: FSMContext):
     ], resize_keyboard=True)
     await m.answer(WELCOME_TEXT, reply_markup=kb)
 
-# 2. SPECIFIC TEXT HANDLERS (PRIORITY LEVEL 1)
+# 2. SPECIFIC TEXT HANDLERS (PRIORITY)
 @dp.message(F.text == "🔑 Код Ямщика")
-async def link_ask(m: types.Message): await m.answer("Введите код ямщика:")
+async def link_ask(m: types.Message, state: FSMContext): 
+    await state.clear()
+    await m.answer("Введите код ямщика:")
 
 @dp.message(F.text == "👤 Моя Светлица")
-async def cab(m: types.Message):
+async def cab(m: types.Message, state: FSMContext):
+    await state.clear() # Сбрасываем любые зависшие диалоги
     uid = m.from_user.id
     if uid == OWNER_ID:
         kb = [[InlineKeyboardButton(text="📥 Заявки", callback_data="adm_reqs")],
@@ -249,16 +255,12 @@ async def cab(m: types.Message):
     kb = [[InlineKeyboardButton(text="💎 Партнёр Артели", callback_data="partner")]]
     await m.answer("👤 <b>КАБИНЕТ ПАССАЖИРА</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-# 3. GENERIC CODE HANDLER (PRIORITY LEVEL 2 - CATCH ALL)
-# Сюда попадет текст, только если он не совпал с кнопками выше
-@dp.message(F.text & ~F.text.startswith("/"))
+# 3. GENERIC CODE HANDLER (С ЗАЩИТОЙ ОТ СТЕЙТОВ)
+@dp.message(F.text & ~F.text.startswith("/") & StateFilter(None))
 async def process_code(m: types.Message):
     code = m.text.strip().upper()
+    if len(code) > 15 or " " in code: return # Игнорируем длинные тексты
     
-    # Защита от случайных сообщений: Код не может быть длиннее 15 символов
-    if len(code) > 15:
-        return 
-
     with get_db_connection() as con:
         drv = con.execute("SELECT user_id, fio, access_code, vip_code FROM drivers WHERE (access_code=? OR vip_code=?) AND status='active'", (code, code)).fetchone()
         pending = None
@@ -271,18 +273,12 @@ async def process_code(m: types.Message):
         c2 = drv['vip_code']
         lvl = 'vip' if code == c2 else 'std'
         info = "VIP 👑" if lvl == 'vip' else "ОБЫЧНЫЙ 👤"
-        
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ ДА, МОЙ", callback_data=f"pass_yes_{m.from_user.id}_{lvl}"),
-             InlineKeyboardButton(text="⛔ ЧУЖАК", callback_data=f"pass_no_{m.from_user.id}")]])
-        
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ ДА", callback_data=f"pass_yes_{m.from_user.id}_{lvl}"), InlineKeyboardButton(text="⛔ НЕТ", callback_data=f"pass_no_{m.from_user.id}")]])
         await safe_send(did, f"🚨 <b>ПРОВЕРКА!</b>\nПассажир ввел {info} код: {code}\nОн у вас в машине?", kb)
         await m.answer(f"⏳ <b>Ждем подтверждения...</b>\nЯмщик {name} должен кивнуть.")
-    
     elif pending:
         await m.answer(f"❌ <b>Ямщик не работает!</b>\nСтатус: {pending['status']}.")
     else:
-        # Если это похоже на код (короткий), но его нет
         await m.answer("❌ <b>Код не найден!</b>")
 
 # 4. CALLBACKS
@@ -314,7 +310,8 @@ async def take(c: types.CallbackQuery):
     await safe_send(ord['uid'], "🚀 <b>Ямщик найден!</b>\nК вам едет карета.")
 
 @dp.callback_query(F.data == "menu_tgl")
-async def mt(c: types.CallbackQuery):
+async def mt(c: types.CallbackQuery, state: FSMContext):
+    await state.clear() # Чистим стейты
     did = c.from_user.id
     with get_db_connection() as con: dis = [r['service_key'] for r in con.execute("SELECT service_key FROM disabled_services WHERE driver_id=?", (did,)).fetchall()]
     kb = []
@@ -323,6 +320,7 @@ async def mt(c: types.CallbackQuery):
         kb.append([InlineKeyboardButton(text=f"{s} {v['name']}", callback_data=f"tg_{k}")])
     kb.append([InlineKeyboardButton(text="🔙", callback_data="back")])
     await c.message.edit_text("🎛 <b>Репертуар:</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await c.answer()
 
 @dp.callback_query(F.data.startswith("tg_"))
 async def tg(c: types.CallbackQuery):
@@ -331,15 +329,17 @@ async def tg(c: types.CallbackQuery):
         if con.execute("SELECT 1 FROM disabled_services WHERE driver_id=? AND service_key=?", (did, k)).fetchone():
             con.execute("DELETE FROM disabled_services WHERE driver_id=? AND service_key=?", (did, k))
         else: con.execute("INSERT INTO disabled_services VALUES (?, ?)", (did, k))
-    await mt(c)
+    await mt(c, FSMContext(storage=storage, key=c.from_user.id)) # Hack to refresh
 
 @dp.callback_query(F.data == "settings")
-async def sett(c: types.CallbackQuery):
+async def sett(c: types.CallbackQuery, state: FSMContext):
+    await state.clear()
     kb = [[InlineKeyboardButton(text="🔑 Сменить коды", callback_data="chg_c")], [InlineKeyboardButton(text="🔙", callback_data="back")]]
     await c.message.edit_text("⚙️ <b>Настройки</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await c.answer()
 
 @dp.callback_query(F.data == "chg_c")
-async def cc_start(c: types.CallbackQuery, state: FSMContext): await c.message.answer("Новый ПУБЛИЧНЫЙ код:"); await state.set_state(ChangeCodes.c1)
+async def cc_start(c: types.CallbackQuery, state: FSMContext): await c.message.answer("Новый ПУБЛИЧНЫЙ код:"); await state.set_state(ChangeCodes.c1); await c.answer()
 @dp.message(ChangeCodes.c1)
 async def cc1(m: types.Message, state: FSMContext): await state.update_data(c1=m.text.upper()); await m.answer("Новый VIP код:"); await state.set_state(ChangeCodes.c2)
 @dp.message(ChangeCodes.c2)
@@ -352,7 +352,9 @@ async def cc2(m: types.Message, state: FSMContext):
     await state.clear()
 
 @dp.callback_query(F.data == "add_custom")
-async def ac(c: types.CallbackQuery, state: FSMContext): await c.message.answer("Название:"); await state.set_state(CustomSrv.name)
+async def ac(c: types.CallbackQuery, state: FSMContext): 
+    await state.clear()
+    await c.message.answer("Название:"); await state.set_state(CustomSrv.name); await c.answer()
 @dp.message(CustomSrv.name)
 async def cn(m: types.Message, state: FSMContext): await state.update_data(name=m.text); await m.answer("Описание:"); await state.set_state(CustomSrv.desc)
 @dp.message(CustomSrv.desc)
@@ -371,55 +373,67 @@ async def ccat(m: types.Message, state: FSMContext):
 
 # 5. ADMIN & REG
 @dp.callback_query(F.data == "adm_reqs")
-async def ar(c: types.CallbackQuery):
+async def ar(c: types.CallbackQuery, state: FSMContext):
+    await state.clear() # ВАЖНО: Сбрасываем стейт, чтобы не висело "Текст:"
     with get_db_connection() as con: rs = con.execute("SELECT user_id, fio, username FROM drivers WHERE status='pending'").fetchall()
-    if not rs: return await c.message.answer("Пусто.")
+    if not rs: 
+        await c.answer()
+        return await c.message.answer("Список заявок пуст 🤷‍♂️")
     for r in rs:
         kb = [[InlineKeyboardButton(text="✅", callback_data=f"ok_{r['user_id']}"), InlineKeyboardButton(text="❌", callback_data=f"no_{r['user_id']}")]
              ,[InlineKeyboardButton(text="📞", callback_data=f"talk_{r['user_id']}")]]
         await c.message.answer(f"📝 {r['fio']} (@{r['username']})", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await c.answer()
 
 @dp.callback_query(F.data.startswith("talk_"))
-async def talk(c: types.CallbackQuery, state: FSMContext): await state.update_data(trg=c.data.split("_")[1]); await c.message.answer("Вопрос:"); await state.set_state(AdminHR.text)
+async def talk(c: types.CallbackQuery, state: FSMContext): 
+    await state.update_data(trg=c.data.split("_")[1]); await c.message.answer("Введите вопрос кандидату:"); await state.set_state(AdminHR.text); await c.answer()
 @dp.message(AdminHR.text)
 async def ts(m: types.Message, state: FSMContext):
-    d = await state.get_data(); await safe_send(d['trg'], f"🤝 <b>Собеседование:</b>\n{m.text}"); await m.answer("Ушло."); await state.clear()
+    d = await state.get_data(); await safe_send(d['trg'], f"🤝 <b>Собеседование:</b>\n{m.text}"); await m.answer("Отправлено."); await state.clear()
 
 @dp.callback_query(F.data.startswith("ok_"))
 async def aok(c: types.CallbackQuery):
     did = c.data.split("_")[1]
     with get_db_connection() as con: con.execute("UPDATE drivers SET status='active' WHERE user_id=?", (did,))
-    await c.answer("Ок"); await safe_send(did, "✅ Принят!")
+    await c.answer("Принято!"); await safe_send(did, "✅ <b>Заявка одобрена!</b>\nТеперь вы полноценный Ямщик.")
 
 @dp.callback_query(F.data.startswith("no_"))
 async def ano(c: types.CallbackQuery):
     did = c.data.split("_")[1]
     with get_db_connection() as con: con.execute("DELETE FROM drivers WHERE user_id=?", (did,))
-    await c.answer("Нет"); await safe_send(did, "❌ Отказ")
+    await c.answer("Удалено"); await safe_send(did, "❌ Ваша заявка отклонена.")
 
 @dp.callback_query(F.data == "adm_list")
-async def al(c: types.CallbackQuery):
+async def al(c: types.CallbackQuery, state: FSMContext):
+    await state.clear()
     with get_db_connection() as con: ds = con.execute("SELECT user_id, fio, status FROM drivers WHERE role!='owner'").fetchall()
+    if not ds:
+        await c.answer()
+        return await c.message.answer("Список ямщиков пуст.")
     for d in ds:
         kb = [[InlineKeyboardButton(text="Блок", callback_data=f"blk_{d['user_id']}"), InlineKeyboardButton(text="Разблок", callback_data=f"unl_{d['user_id']}")]
              ,[InlineKeyboardButton(text="Письмо", callback_data=f"msg_{d['user_id']}")]]
         await c.message.answer(f"👤 {d['fio']} | {d['status']}", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await c.answer()
 
 @dp.callback_query(F.data.startswith("blk_"))
 async def blk(c: types.CallbackQuery):
     with get_db_connection() as con: con.execute("UPDATE drivers SET status='blocked' WHERE user_id=?", (c.data.split("_")[1],))
-    await c.answer("Блок")
+    await c.answer("Заблокирован")
 @dp.callback_query(F.data.startswith("unl_"))
 async def unl(c: types.CallbackQuery):
     with get_db_connection() as con: con.execute("UPDATE drivers SET status='active' WHERE user_id=?", (c.data.split("_")[1],))
-    await c.answer("Разблок")
+    await c.answer("Разблокирован")
 @dp.callback_query(F.data.startswith("msg_"))
-async def ams(c: types.CallbackQuery, state: FSMContext): await state.update_data(trg=c.data.split("_")[1]); await c.message.answer("Текст:"); await state.set_state(AdminMsg.text)
+async def ams(c: types.CallbackQuery, state: FSMContext): await state.update_data(trg=c.data.split("_")[1]); await c.message.answer("Текст письма:"); await state.set_state(AdminMsg.text); await c.answer()
 @dp.message(AdminMsg.text)
 async def amss(m: types.Message, state: FSMContext):
     d = await state.get_data(); await safe_send(d['trg'], f"✉️ <b>АДМИН:</b> {m.text}"); await m.answer("Ушло."); await state.clear()
 @dp.callback_query(F.data == "adm_cast")
-async def cast(c: types.CallbackQuery, state: FSMContext): await c.message.answer("Текст:"); await state.set_state("bc")
+async def cast(c: types.CallbackQuery, state: FSMContext): 
+    await state.clear()
+    await c.message.answer("Введите текст рассылки:"); await state.set_state("bc"); await c.answer()
 @dp.message(F.state == "bc")
 async def casts(m: types.Message, state: FSMContext):
     with get_db_connection() as con: us = con.execute("SELECT user_id FROM clients UNION SELECT user_id FROM drivers").fetchall()
@@ -427,10 +441,11 @@ async def casts(m: types.Message, state: FSMContext):
     await m.answer("Разослано."); await state.clear()
 
 @dp.callback_query(F.data == "back")
-async def bck(c: types.CallbackQuery): await c.message.delete(); await cab(c.message)
+async def bck(c: types.CallbackQuery, state: FSMContext): await state.clear(); await c.message.delete(); await cab(c.message, state)
 
 @dp.message(Command("drive"))
 async def reg(m: types.Message, state: FSMContext):
+    await state.clear()
     if get_driver(m.from_user.id): return await m.answer("Уже в системе.")
     await m.answer("ФИО?"); await state.set_state(DriverReg.fio)
 @dp.message(DriverReg.fio)
