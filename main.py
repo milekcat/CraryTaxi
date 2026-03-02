@@ -30,6 +30,7 @@ DB_PATH = "/data/taxi_db.sqlite" if os.path.exists("/data") else os.path.join(BA
 
 VIP_LIMIT = 10          
 DEFAULT_COMMISSION = 10 
+LAWYER_LINK = "https://t.me/Ai_advokatrobot"
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 storage = MemoryStorage()
@@ -37,16 +38,45 @@ dp = Dispatcher(storage=storage)
 active_orders = {} 
 
 # ==========================================
-# 📜 СОСТОЯНИЯ (FSM)
+# 📜 ПОЛНЫЙ ПЕРЕЧЕНЬ СТАНДАРТНЫХ УСЛУГ
 # ==========================================
-class DriverReg(StatesGroup): fio=State(); car=State(); pay=State(); ref=State(); code=State()
-class Unlock(StatesGroup): key=State()
-class AdminManage(StatesGroup): target_id=State(); action_data=State()
-class CustomService(StatesGroup): name=State(); desc=State(); price=State()
-class AdminBroadcast(StatesGroup): text=State()
+CRAZY_SERVICES = {
+    "candy": {"cat": 1, "name": "🍬 Сладкий гостинец", "desc": "Ямщик с поклоном вручает леденец."},
+    "nose": {"cat": 1, "name": "👃 Перст в носу", "desc": "Ямщик всю дорогу в носу ковыряет."},
+    "butler": {"cat": 1, "name": "🤵 Дворецкий", "desc": "Открываем дверь, кланяемся, величаем Барином."},
+    "joke": {"cat": 1, "name": "🤡 Скоморох", "desc": "Шутка юмора. Смеяться обязательно."},
+    "silence": {"cat": 1, "name": "🤐 Обет молчания", "desc": "Едем молча, как в монастыре."},
+    "granny": {"cat": 2, "name": "👵 Ворчливая бабка", "desc": "Ролевая игра: Куда прешь, окаянный!"},
+    "gopnik": {"cat": 2, "name": "🍺 Разбойник", "desc": "Шансон, семки, решение вопросиков."},
+    "guide": {"cat": 2, "name": "🗣 Горе-Гид", "desc": "Небылицы о каждом столбе."},
+    "psych": {"cat": 2, "name": "🧠 Душеприказчик", "desc": "Слушаем кручину, даем советы."},
+    "spy": {"cat": 3, "name": "🕵️ Опричник (007)", "desc": "Тайная слежка и уход от погони."},
+    "karaoke": {"cat": 3, "name": "🎤 Застольные песни", "desc": "Орем песни дуэтом на всю улицу."},
+    "dance": {"cat": 3, "name": "🐻 Медвежьи пляски", "desc": "Танцы на капоте на светофоре."},
+    "kidnap": {"cat": 4, "name": "🎭 Похищение", "desc": "В мешок и в лес (понарошку)."},
+    "tarzan": {"cat": 4, "name": "🦍 Леший", "desc": "Рычим на прохожих, пугаем девок."},
+    "burn": {"cat": 4, "name": "🔥 Огненная колесница", "desc": "Сжигаем повозку на пустыре."},
+    "eyes": {"cat": 5, "name": "👁️ Очи чёрные", "desc": "Комплимент вашим глазам."},
+    "smile": {"cat": 5, "name": "😁 Улыбка", "desc": "Комплимент вашей улыбке."},
+    "style": {"cat": 5, "name": "👠 Модный приговор", "desc": "Восхищение нарядом."},
+    "improv": {"cat": 5, "name": "✨ Импровизация", "desc": "Ямщик сам придумает потеху."},
+    "propose": {"cat": 5, "name": "💍 Сватовство", "desc": "Предложение руки и сердца."}
+}
+
+WELCOME_TEXT = (
+    "🐎 <b>Здравия желаю, Барин!</b>\n\n"
+    "Добро пожаловать в артель <b>«Весёлый Извозчик»</b>!\n"
+    "У нас не просто телега с мотором, у нас — душа нараспашку.\n\n"
+    "📜 <b>В программе:</b>\n"
+    "• Ямщик-Психолог (выслушает кручину)\n"
+    "• Пляски на тракте\n"
+    "• Огненная потеха (сжигание повозки)\n\n"
+    "⚖️ <i>Защита от опричников — <a href='https://t.me/Ai_advokatrobot'>Казённый Стряпчий</a>.</i>\n\n"
+    "<b>Куда путь держим?</b> 👇"
+)
 
 # ==========================================
-# 🗄️ ИНИЦИАЛИЗАЦИЯ БАЗЫ (С ПОЛНОЙ СТРУКТУРОЙ)
+# 🗄️ ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ
 # ==========================================
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -57,7 +87,6 @@ def init_db():
         balance INTEGER DEFAULT 0, rating_sum INTEGER DEFAULT 0, rating_count INTEGER DEFAULT 0, 
         commission INTEGER DEFAULT 10, referred_by INTEGER, promo_end_date TIMESTAMP)""")
     
-    # Добавляем колонку username если её нет
     cur.execute("PRAGMA table_info(drivers)")
     columns = [column[1] for column in cur.fetchall()]
     if 'username' not in columns:
@@ -76,14 +105,17 @@ def init_db():
 init_db()
 
 # ==========================================
-# 📡 WEB SERVER (С ПОДДЕРЖКОЙ ЛИЧНЫХ УСЛУГ)
+# 🤖 СОСТОЯНИЯ (FSM)
 # ==========================================
-async def get_services_json(request):
-    uid = request.query.get('user_id')
-    # Логика подгрузки общих + личных услуг для конкретного водителя
-    # (Для реализации в index.html)
-    return web.json_response({"status": "ok"})
+class DriverReg(StatesGroup): fio=State(); car=State(); pay=State(); ref=State(); code=State()
+class Unlock(StatesGroup): key=State()
+class AdminManage(StatesGroup): target_id=State(); action_data=State()
+class CustomServiceAdd(StatesGroup): name=State(); desc=State(); price=State()
+class AdminBroadcast(StatesGroup): text=State()
 
+# ==========================================
+# 📡 WEB SERVER
+# ==========================================
 async def web_order(request):
     try:
         data = await request.json()
@@ -98,7 +130,7 @@ async def web_order(request):
     except: return web.json_response({"status": "error"})
 
 # ==========================================
-# 🛠 ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# 🛠 УТИЛИТЫ
 # ==========================================
 def get_driver(uid):
     with sqlite3.connect(DB_PATH) as con: return con.execute("SELECT * FROM drivers WHERE user_id=?", (uid,)).fetchone()
@@ -121,32 +153,33 @@ async def start(message: types.Message):
         [KeyboardButton(text="🚖 ЗАКАЗАТЬ ПОТЕХУ", web_app=WebAppInfo(url=APP_URL))],
         [KeyboardButton(text="👤 Моя Светлица"), KeyboardButton(text="🔑 Ввести код Ямщика")]
     ], resize_keyboard=True)
-    await message.answer("🐎 <b>ВЕСЁЛЫЙ ИЗВОЗЧИК</b>\nЖми кнопку заказа или заходи в кабинет!", reply_markup=kb)
+    await message.answer(WELCOME_TEXT, reply_markup=kb)
 
-# --- ЕДИНЫЙ КАБИНЕТ (С ПЕРЕКЛЮЧЕНИЕМ РОЛЕЙ) ---
+# --- УНИВЕРСАЛЬНЫЙ КАБИНЕТ ---
 @dp.message(F.text == "👤 Моя Светлица")
 @dp.message(Command("cab"))
 async def cabinet(message: types.Message, state: FSMContext):
     uid = message.from_user.id
     drv = get_driver(uid)
 
-    # 1. КАБИНЕТ АДМИНИСТРАТОРА (СТАРОСТЫ)
-    if uid == OWNER_ID or (drv and drv[8] == 'owner'):
+    # 1. АДМИН
+    if uid == OWNER_ID:
         kb = [
-            [InlineKeyboardButton(text="📋 Список Ямщиков", callback_data="adm_list_drivers")],
-            [InlineKeyboardButton(text="📢 Рассылка Артели", callback_data="adm_cast")],
-            [InlineKeyboardButton(text="🎟 Промокоды", callback_data="adm_promos")]
+            [InlineKeyboardButton(text="📋 Список Ямщиков", callback_data="adm_list")],
+            [InlineKeyboardButton(text="📢 Рассылка", callback_data="adm_cast")],
+            [InlineKeyboardButton(text="🎟 Промокоды", callback_data="adm_promo")]
         ]
-        await message.answer("👑 <b>ПАНЕЛЬ СТАРОСТЫ</b>\nВы управляете всей артелью.", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        await message.answer("👑 <b>ПАНЕЛЬ СТАРОСТЫ</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
         return
 
-    # 2. КАБИНЕТ ВОДИТЕЛЯ (ЯМЩИКА)
+    # 2. ВОДИТЕЛЬ
     if drv and drv[7] == 'active':
         kb = [
             [InlineKeyboardButton(text="🎛 Мой Репертуар", callback_data="menu_edit")],
-            [InlineKeyboardButton(text="➕ Добавить свою услугу", callback_data="add_custom")],
+            [InlineKeyboardButton(text="➕ Своя услуга", callback_data="add_custom")],
             [InlineKeyboardButton(text="🤝 Рефералка", callback_data="ref_prog")]
         ]
+        # Проверка активного заказа
         status = "🟢 На линии"
         for cid, o in active_orders.items():
             if o.get('driver_id') == uid:
@@ -154,93 +187,68 @@ async def cabinet(message: types.Message, state: FSMContext):
                 kb.insert(0, [InlineKeyboardButton(text="🏁 ЗАВЕРШИТЬ", callback_data=f"fin_{cid}")])
                 break
         
-        await message.answer(f"🪪 <b>ЯМЩИК: {drv[2]}</b>\n💰 Долг Артели: {drv[9]}₽\n🔑 Код: <code>{drv[5]}</code>\nСтатус: {status}", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        await message.answer(f"🪪 <b>ЯМЩИК: {drv[2]}</b>\n💰 Баланс: {drv[9]}₽\n🔑 Код: <code>{drv[5]}</code>\n{status}", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
         return
 
-    # 3. КАБИНЕТ КЛИЕНТА
+    # 3. КЛИЕНТ
     cli = get_client(uid)
     if cli:
         await message.answer(f"👤 <b>КАБИНЕТ БОЯРИНА</b>\n🎬 Поездок: {cli[3]}\n💰 Потрачено: {cli[2]}₽")
     else:
-        await message.answer("Нажмите /start для регистрации.")
+        await message.answer("Нажмите /start")
 
-# --- ФУНКЦИИ ЯМЩИКА: СВОИ УСЛУГИ ---
+# --- ЛОГИКА СВОИХ УСЛУГ ---
 @dp.callback_query(F.data == "add_custom")
-async def start_custom(call: types.CallbackQuery, state: FSMContext):
-    await call.message.answer("Введите название вашей услуги:"); await state.set_state(CustomService.name)
+async def add_custom_start(call: types.CallbackQuery, state: FSMContext):
+    await call.message.answer("Введите название потехи:"); await state.set_state(CustomServiceAdd.name)
 
-@dp.message(CustomService.name)
-async def cust_name(message: types.Message, state: FSMContext):
-    await state.update_data(name=message.text); await message.answer("Введите описание:"); await state.set_state(CustomService.desc)
+@dp.message(CustomServiceAdd.name)
+async def add_custom_name(message: types.Message, state: FSMContext):
+    await state.update_data(name=message.text); await message.answer("Описание потехи:"); await state.set_state(CustomServiceAdd.desc)
 
-@dp.message(CustomService.desc)
-async def cust_desc(message: types.Message, state: FSMContext):
-    await state.update_data(desc=message.text); await message.answer("Введите цену (числом):"); await state.set_state(CustomService.price)
+@dp.message(CustomServiceAdd.desc)
+async def add_custom_desc(message: types.Message, state: FSMContext):
+    await state.update_data(desc=message.text); await message.answer("Цена (золотых):"); await state.set_state(CustomServiceAdd.price)
 
-@dp.message(CustomService.price)
-async def cust_price(message: types.Message, state: FSMContext):
-    if not message.text.isdigit(): return await message.answer("Нужно число!")
+@dp.message(CustomServiceAdd.price)
+async def add_custom_price(message: types.Message, state: FSMContext):
+    if not message.text.isdigit(): return await message.answer("Только цифры!")
     data = await state.get_data()
     with sqlite3.connect(DB_PATH) as con:
         con.execute("INSERT INTO custom_services (driver_id, name, description, price) VALUES (?, ?, ?, ?)", 
                     (message.from_user.id, data['name'], data['desc'], int(message.text)))
-    await message.answer("✅ Услуга добавлена в ваш личный репертуар!"); await state.clear()
+    await message.answer("✅ Услуга добавлена в ваш личный список!"); await state.clear()
 
-# --- ФУНКЦИИ АДМИНА: УПРАВЛЕНИЕ ВОДИТЕЛЯМИ ---
-@dp.callback_query(F.data == "adm_list_drivers")
-async def list_drivers(call: types.CallbackQuery):
+# --- УПРАВЛЕНИЕ ЯМЩИКАМИ (АДМИН) ---
+@dp.callback_query(F.data == "adm_list")
+async def adm_list(call: types.CallbackQuery):
     with sqlite3.connect(DB_PATH) as con:
         drivers = con.execute("SELECT user_id, fio, balance, status FROM drivers WHERE role != 'owner'").fetchall()
-    
-    if not drivers: return await call.message.answer("Ямщиков пока нет.")
-    
     for d in drivers:
-        kb = [[InlineKeyboardButton(text="✉️ Написать", callback_data=f"adm_msg_{d[0]}"),
-               InlineKeyboardButton(text="💰 Счёт", callback_data=f"adm_bill_{d[0]}")],
-              [InlineKeyboardButton(text="🚫 Блок", callback_data=f"adm_block_{d[0]}"),
-               InlineKeyboardButton(text="✅ Разблок", callback_data=f"adm_unblock_{d[0]}")]]
-        await call.message.answer(f"👤 {d[1]}\nID: <code>{d[0]}</code>\nДолг: {d[2]}₽\nСтатус: {d[3]}", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        kb = [[InlineKeyboardButton(text="🚫 Блок", callback_data=f"adm_block_{d[0]}"), InlineKeyboardButton(text="💰 Счёт", callback_data=f"adm_bill_{d[0]}")] ]
+        await call.message.answer(f"👤 {d[1]}\nДолг: {d[2]}₽\nСтатус: {d[3]}", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 @dp.callback_query(F.data.startswith("adm_block_"))
-async def block_driver(call: types.CallbackQuery):
+async def adm_block(call: types.CallbackQuery):
     did = call.data.split("_")[2]
     with sqlite3.connect(DB_PATH) as con: con.execute("UPDATE drivers SET status='blocked' WHERE user_id=?", (did,))
-    await call.answer("Заблокирован"); await safe_send(did, "⛔ Ваша лицензия ямщика отозвана Старостой.")
+    await call.answer("Заблокирован"); await safe_send(did, "⛔ Ваша лицензия отозвана.")
 
-@dp.callback_query(F.data.startswith("adm_bill_"))
-async def bill_driver(call: types.CallbackQuery):
-    did = call.data.split("_")[2]
-    drv = get_driver(did)
-    await safe_send(did, f"⚠️ <b>ВНИМАНИЕ!</b>\nСтароста требует оплатить долг Артели: <b>{drv[9]}₽</b>\nРеквизиты: {OWNER_ID}")
-    await call.answer("Счёт выслан")
+# --- РЕГИСТРАЦИЯ И КОДЫ ---
+@dp.message(F.text == "🔑 Ввести код Ямщика")
+async def ask_key(message: types.Message, state: FSMContext):
+    await message.answer("Введи код:"); await state.set_state(Unlock.key)
 
-# --- ПРОЧИЙ ФУНКЦИОНАЛ (РЕГИСТРАЦИЯ, ЗАКАЗЫ) ---
-@dp.message(Command("drive"))
-async def reg_start(message: types.Message, state: FSMContext):
-    if get_driver(message.from_user.id): return await message.answer("Вы уже в Артели!")
-    await message.answer("Как вас величать? (ФИО)"); await state.set_state(DriverReg.fio)
-
-@dp.message(DriverReg.fio)
-async def reg_fio(message: types.Message, state: FSMContext):
-    await state.update_data(fio=message.text); await message.answer("На чем скачете?"); await state.set_state(DriverReg.car)
-
-@dp.message(DriverReg.car)
-async def reg_car(message: types.Message, state: FSMContext):
-    await state.update_data(car=message.text); await message.answer("Реквизиты для оплаты?"); await state.set_state(DriverReg.pay)
-
-@dp.message(DriverReg.pay)
-async def reg_pay(message: types.Message, state: FSMContext):
-    await state.update_data(pay=message.text); await message.answer("Придумайте свой секретный код (латиница):"); await state.set_state(DriverReg.code)
-
-@dp.message(DriverReg.code)
-async def reg_fin(message: types.Message, state: FSMContext):
-    d = await state.get_data(); code = message.text.upper().strip()
-    try:
+@dp.message(Unlock.key)
+async def check_key(message: types.Message, state: FSMContext):
+    code = message.text.strip().upper()
+    with sqlite3.connect(DB_PATH) as con:
+        drv = con.execute("SELECT user_id, fio FROM drivers WHERE access_code=? AND status='active'", (code,)).fetchone()
+    if drv:
         with sqlite3.connect(DB_PATH) as con:
-            con.execute("INSERT INTO drivers (user_id, username, fio, car_info, payment_info, access_code, status) VALUES (?,?,?,?,?,?, 'active')",
-                        (message.from_user.id, message.from_user.username, d['fio'], d['car'], d['pay'], code))
-        await message.answer(f"✅ <b>Добро пожаловать в Артель!</b>\nТвой код: <code>{code}</code>")
-    except: await message.answer("❌ Ошибка (возможно код занят)")
+            con.execute("UPDATE clients SET linked_driver_id=? WHERE user_id=?", (drv[0], message.from_user.id))
+        await message.answer(f"✅ Привязан к: {drv[1]}")
+    else: await message.answer("❌ Нет такого кода.")
     await state.clear()
 
 # ==========================================
